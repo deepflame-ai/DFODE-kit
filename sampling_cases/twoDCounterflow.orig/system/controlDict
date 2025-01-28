@@ -1,0 +1,99 @@
+/*--------------------------------*- C++ -*----------------------------------*\
+  =========                 |
+  \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
+   \\    /   O peration     | Website:  https://openfoam.org
+    \\  /    A nd           | Version:  7
+     \\/     M anipulation  |
+\*---------------------------------------------------------------------------*/
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       dictionary;
+    location    "system";
+    object      controlDict;
+}
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+application     dfLowMachFoam;
+
+startFrom       latestTime;
+
+startTime       0;
+
+stopAt          endTime;
+
+endTime         0.00500;
+
+deltaT          5e-07;
+
+maxDeltaT       0.0010;
+
+maxCo           0.5;
+
+adjustTimeStep  on;
+
+writeControl    adjustableRunTime;
+
+writeInterval   0.001;
+
+purgeWrite      0;
+
+writeFormat     ascii;
+
+// writePrecision    6;
+
+writeCompression off;
+
+timeFormat      fixed;
+
+timePrecision   7;
+
+runTimeModifiable false;
+
+/*
+functions
+{
+     surfaces
+     {
+          type            surfaces;
+          libs            ("libsampling.so");
+
+          // writeControl    writeTime;
+          writeControl    adjustableRunTime;
+          writeInterval   0.0005;
+
+          surfaceFormat   vtk;
+          fields          
+          (
+               p
+               U
+               T
+               Qdot
+               NH3
+               N2
+               O2
+               H2
+          );
+
+          interpolationScheme cellPoint;
+
+          surfaces
+          (
+               cuttingPlane
+               {
+                   type         cuttingPlane;
+                   planeType    pointAndNormal;
+                   pointAndNormalDict
+                   {
+                       basePoint    (0 0 0.0001);
+                       normalVector (0 0 1);
+                   }
+                   interpolate  true;
+                   triangulate  false;
+               }
+          );
+     }
+}
+*/
+// ************************************************************************* //

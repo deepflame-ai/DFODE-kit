@@ -1,0 +1,39 @@
+#!/bin/sh
+cd ${0%/*} || exit 1    # Run from this directory
+
+# Source OpenFOAM functions
+. $WM_PROJECT_DIR/bin/tools/RunFunctions
+
+# Source self-defined functions
+. $DFODE_ROOT/myScripts/MyFunctions
+
+application=$(getApplication)
+numProcessors=$(getNumberOfProcessors)
+
+blockMesh > log.blockMesh 2>&1
+setFields > log.setFields 2>&1
+decomposePar -force > log.decomposePar 2>&1
+mpirun -np $numProcessors --allow-run-as-root --use-hwthread-cpus $application -parallel > log.mpirun 2>&1
+reconstructPar > log.reconstructPar 2>&1
+
+if [ -n "$1" ]; then
+    data_path=$1
+    copyTimeDirectories "$data_path"
+fi
+
+cleanTimeDirectories
+cleanLogs
+
+reconstructPar -latestTime > log.temp
+cleanProcessors
+
+python continueForFlameSpeed.py
+
+decomposePar -force > log.decomposePar 2>&1
+mpirun -np $numProcessors --allow-run-as-root --use-hwthread-cpus $application -parallel > log.mpirun 2>&1
+reconstructPar > log.reconstructPar 2>&1
+flameSpeed > log.flameSpeed 2>&1
+
+if [ -n "$1" ]; then
+    cp log.flameSpeed $data_path
+fi

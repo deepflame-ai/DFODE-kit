@@ -1,0 +1,67 @@
+/*--------------------------------*- C++ -*----------------------------------*\
+  =========                 |
+  \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
+   \\    /   O peration     | Website:  https://openfoam.org
+    \\  /    A nd           | Version:  7
+     \\/     M anipulation  |
+\*---------------------------------------------------------------------------*/
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       dictionary;
+    location    "system";
+    object      setFieldsDict;
+}
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+defaultFieldValues
+(
+ /*
+    volVectorFieldValue  U   (0.3220464661447355 0 0)
+    volScalarFieldValue T 300
+    volScalarFieldValue p 101325 //1atm
+    volScalarFieldValue CH4   0.05518666598235157
+    volScalarFieldValue O2   0.2201412376866278
+    volScalarFieldValue N2   0.7246720963310205
+  */
+);
+
+regions
+(
+    boxToCell
+    {
+        box (0.00 -0.02 -0.02) (0.02 0.02 0.02);
+        fieldValues
+        (
+		volScalarFieldValue	T	2133.78881448494
+		volScalarFieldValue	H2	0.000268130397566
+		volScalarFieldValue	H	4.00E-06
+		volScalarFieldValue	O	1.59E-05
+		volScalarFieldValue	O2	0.001271182859826
+		volScalarFieldValue	OH	0.000896791711522
+		volScalarFieldValue	H2O	0.225951797427238
+		volScalarFieldValue	HO2	3.01E-07
+		volScalarFieldValue	H2O2	8.44E-08
+		volScalarFieldValue	N	1.14E-09
+		volScalarFieldValue	NH	5.78E-10
+		volScalarFieldValue	NH2	7.56E-10
+		volScalarFieldValue	NH3	8.88E-09
+		volScalarFieldValue	NNH	1.29E-09
+		volScalarFieldValue	NO	0.000844384492746
+		volScalarFieldValue	NO2	2.78E-07
+		volScalarFieldValue	N2O	1.33E-07
+		volScalarFieldValue	HNO	3.09E-08
+		volScalarFieldValue	N2	0.770696214082167
+		volScalarFieldValue	H2NO	3.90E-11
+		volScalarFieldValue	N2H2	9.08E-14
+		volScalarFieldValue	HONO	3.74E-08
+		volScalarFieldValue	N2H3	3.71E-16
+		volScalarFieldValue	N2H4	1.50E-18
+		volScalarFieldValue	NH2OH	7.38E-13
+		volScalarFieldValue	AR	5.08E-05
+        );
+    }
+);
+
+// ************************************************************************* //
