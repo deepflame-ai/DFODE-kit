@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools >= 61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "deepflame-node"
+authors = [
+    {name = "Example Author", email = "author@example.com"}
+]
+description = "package description"
+version = "0.0.1"
+readme = "README.md"
+requires-python = ">=3.8"
+dependencies = [
+    "numpy",
+    "matplotlib",
+    "Cantera == 2.6.0"
+]
+
+[tool.setuptools]
+packages = ["deepflame_node"]
