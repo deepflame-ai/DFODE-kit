@@ -51,3 +51,8 @@ git clone https://github.com/DeepFlame-ML/DFODE.git
 # in case users would like to experiment with different
 # sampling schemes or make adjustments
 pip install -e /path/to/your/DFODE/package
+```
+
+## Usage
+
+- For an example of using this package to sample data from low-dimensional flame simulations, please ensure that [DeepFlame](https://github.com/deepmodeling/deepflame-dev) has been properly installed and refer to `/your/path/to/DFODE/sampling_cases/oneDFlame.orig/case_setup.ipynb` for instructions
