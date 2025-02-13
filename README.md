@@ -47,4 +47,7 @@ DFODE provides:
 git clone https://github.com/DeepFlame-ML/DFODE.git
 
 # Install dependencies
-pip install -r requirements.txt
+# Installing this package in editable mode is recommended
+# in case users would like to experiment with different
+# sampling schemes or make adjustments
+pip install -e /path/to/your/DFODE/package
