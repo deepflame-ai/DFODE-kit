@@ -1,4 +1,4 @@
-# DFODE: Deep learning package for solving flame chemical kinetics with high-dimensional stiff Ordinary Differential Equations
+# DFODE: Deep learning package for solving Flame chemical kinetics with high-dimensional stiff Ordinary Differential Equations
 
 DFODE is an open-source deep learning package designed to accelerate computationally intensive reacting flow simulations by replacing conventional numerical integration of chemical source terms governed by high-dimensional stiff ordinary differential equations (ODEs).
 
