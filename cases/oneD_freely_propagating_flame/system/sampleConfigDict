@@ -1,0 +1,55 @@
+/*--------------------------------*- C++ -*----------------------------------*\
+  =========                 |
+  \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
+   \\    /   O peration     | Website:  https://openfoam.org
+    \\  /    A nd           | Version:  7
+     \\/     M anipulation  |
+\*---------------------------------------------------------------------------*/
+FoamFile
+{
+    format      ascii;
+    class       dictionary;
+    location    "system";
+    object      sampleConfigDict;
+}
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+// blockMeshDict settings
+domainWidth         0.0018471809630057887;
+domainLength        0.018471809630057887;
+halfDomainLength    0.009235904815028943;
+
+// controlDict & sampling settings
+targetNetTimeStep   1e-06;
+simEndTime          0.0015885109221673505;
+simSampleTimeStep   1.5727830912548026e-05;
+simWriteInterval    1.5727830912548026e-05;
+
+// setFieldsDict & 0 dir settings
+UInlet              2.3489328862660463;
+pInternal           101325;
+
+TUnburnt              300.0000000000;
+HUnburnt                0.0000000000;
+H2Unburnt               0.0285116253;
+OUnburnt                0.0000000000;
+OHUnburnt               0.0000000000;
+H2OUnburnt              0.0000000000;
+O2Unburnt               0.2262685976;
+HO2Unburnt              0.0000000000;
+H2O2Unburnt             0.0000000000;
+N2Unburnt               0.7452197771;
+
+TBurnt               2387.7370539722;
+HBurnt                  0.0000750876;
+H2Burnt                 0.0012199387;
+OBurnt                  0.0003921300;
+OHBurnt                 0.0056901808;
+H2OBurnt                0.2401935696;
+O2Burnt                 0.0072074233;
+HO2Burnt                0.0000017034;
+H2O2Burnt               0.0000001896;
+N2Burnt                 0.7452197771;
+
+
+// ************************************************************************* //

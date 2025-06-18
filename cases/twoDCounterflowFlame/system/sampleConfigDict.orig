@@ -1,0 +1,39 @@
+/*--------------------------------*- C++ -*----------------------------------*\
+  =========                 |
+  \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
+   \\    /   O peration     | Website:  https://openfoam.org
+    \\  /    A nd           | Version:  7
+     \\/     M anipulation  |
+\*---------------------------------------------------------------------------*/
+FoamFile
+{
+    format      ascii;
+    class       dictionary;
+    location    "system";
+    object      sampleConfigDict;
+}
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+// blockMeshDict settings
+domainWidth             placeHolder;
+domainLength            placeHolder;
+cellsAlongWidth         placeHolder;
+cellsAlongLength        placeHolder;
+L1                      placeHolder;
+L2                      placeHolder;
+
+// controlDict & sampling settings
+numSubdomain            placeHolder;
+simEndTime              placeHolder;
+simWriteInterval        placeHolder;
+
+// setFieldsDict & 0 dir settings
+UInletFuel              placeHolder;
+UInletAir               placeHolder;
+pInternal               placeHolder;
+
+fuelInletStates         placeHolder;
+airInletStates          placeHolder;
+ignitionRegionStates    placeHolder;
+
+// ************************************************************************* //

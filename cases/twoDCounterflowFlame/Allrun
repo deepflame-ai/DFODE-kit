@@ -1,0 +1,15 @@
+#!/bin/sh
+cd ${0%/*} || exit 1    # Run from this directory
+
+# Source tutorial run functions
+. $WM_PROJECT_DIR/bin/tools/RunFunctions
+
+application=dfLowMachFoam
+numProcessors=$(grep "numSubdomain" system/sampleConfigDict | awk '{print $2}' | tr -d ';')
+
+blockMesh > log.blockMesh 2>&1
+checkMesh > log.checkMesh 2>&1
+setFields > log.setFields 2>&1
+decomposePar -force > log.decomposePar 2>&1
+mpirun --oversubscribe -np $numProcessors --allow-run-as-root $application -parallel > log.mpirun 2>&1
+# runApplication reconstructPar

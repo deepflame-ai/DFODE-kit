@@ -14,20 +14,22 @@ def advance_reactor(gas, state, reactor, reactor_net, min_time_step, max_time_st
     
     return time_step, gas
 
-def main(original_data_path, mech_path, min_time_step, max_time_step, save_file_path):
-    # Check if the original data file exists
+def validate_inputs(original_data_path, mech_path, min_time_step, max_time_step):
+    """Validate input file paths and time step values."""
     if not os.path.isfile(original_data_path):
         raise FileNotFoundError(f"Original data file not found: {original_data_path}")
     
-    # Check if the mechanism file exists
     if not os.path.isfile(mech_path):
         raise FileNotFoundError(f"Chemical mechanism file not found: {mech_path}")
 
-    # Validate time step values
     if min_time_step <= 0 or max_time_step <= 0:
         raise ValueError("Time steps must be positive values.")
     if min_time_step >= max_time_step:
         raise ValueError("Minimum time step must be less than the maximum time step.")
+
+def main(original_data_path, mech_path, min_time_step, max_time_step, save_file_path):
+    # Validate inputs
+    validate_inputs(original_data_path, mech_path, min_time_step, max_time_step)
 
     # Load the chemical mechanism
     gas = ct.Solution(mech_path)

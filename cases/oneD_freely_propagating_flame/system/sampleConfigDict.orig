@@ -1,0 +1,35 @@
+/*--------------------------------*- C++ -*----------------------------------*\
+  =========                 |
+  \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
+   \\    /   O peration     | Website:  https://openfoam.org
+    \\  /    A nd           | Version:  7
+     \\/     M anipulation  |
+\*---------------------------------------------------------------------------*/
+FoamFile
+{
+    format      ascii;
+    class       dictionary;
+    location    "system";
+    object      sampleConfigDict;
+}
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+// blockMeshDict settings
+domainWidth         placeHolder;
+domainLength        placeHolder;
+halfDomainLength    placeHolder;
+
+// controlDict & sampling settings
+targetNetTimeStep   placeHolder;
+simEndTime          placeHolder;
+simSampleTimeStep   placeHolder;
+simWriteInterval    placeHolder;
+
+// setFieldsDict & 0 dir settings
+UInlet              placeHolder;
+pInternal           placeHolder;
+
+unburntStates       placeHolder;
+equilibriumStates   placeHolder;
+
+// ************************************************************************* //
