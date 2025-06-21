@@ -19,7 +19,7 @@ FoamFile
 
 W       $domainWidth;
 L       $domainLength;
-halfL   $halfDomainLength;
+halfL   $ignitionRegion;
 
 defaultFieldValues
 (

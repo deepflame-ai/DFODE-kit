@@ -22,11 +22,11 @@ application         dfLowMachFoam;
 startFrom           latestTime;
 startTime           0;
 stopAt              endTime;
-endTime             $simEndTime;
+endTime             $simTime;
 
-deltaT              $targetNetTimeStep;
+deltaT              $simTimeStep;
 adjustTimeStep      on;
-maxDeltaT           $simSampleTimeStep;
+maxDeltaT           $simTimeStep;
 maxCo               0.5;
 
 writeControl        adjustableRunTime;

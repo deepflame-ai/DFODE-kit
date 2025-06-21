@@ -14,22 +14,33 @@ FoamFile
 }
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
+// constant/CanteraTorchProperties settings
+CanteraMechanismFile_   placeHolder;
+inertSpecie_            placeHolder;
+
+torch_                  off;
+GPU_                    on;
+log_                    on;
+torchModel_             "DNN_model.pt"; 
+frozenTemperature_      510;
+inferenceDeltaTime_     1e-6;
+coresPerNode_           16;
+
 // blockMeshDict settings
-domainWidth         placeHolder;
-domainLength        placeHolder;
-halfDomainLength    placeHolder;
+domainWidth             placeHolder;
+domainLength            placeHolder;
+ignitionRegion          placeHolder;
 
 // controlDict & sampling settings
-targetNetTimeStep   placeHolder;
-simEndTime          placeHolder;
-simSampleTimeStep   placeHolder;
-simWriteInterval    placeHolder;
+simTimeStep             placeHolder;
+simTime                 placeHolder;
+simWriteInterval        placeHolder;
 
 // setFieldsDict & 0 dir settings
-UInlet              placeHolder;
-pInternal           placeHolder;
+UInlet                  placeHolder;
+pInternal               placeHolder;
 
-unburntStates       placeHolder;
-equilibriumStates   placeHolder;
+unburntStates           placeHolder;
+equilibriumStates       placeHolder;
 
 // ************************************************************************* //

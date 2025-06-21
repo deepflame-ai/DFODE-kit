@@ -15,9 +15,11 @@ FoamFile
 }
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
+#include "../system/sampleConfigDict"
+
 chemistry                   on;
 
-CanteraMechanismFile        "/data1/kexiao/projects/flame_bench_project/develop/FlameBench-dev/flamebench/data_sampler/cases/oneD_freely_propagating_flame/Burke2012_s9r23.yaml";
+CanteraMechanismFile        $CanteraMechanismFile_;
 
 transportModel              "Mix";
 
@@ -27,19 +29,19 @@ odeCoeffs
     "absTol"                1e-10;
 }
 
-inertSpecie                 "N2";
+inertSpecie                 $inertSpecie_;
 
 splittingStrategy           off;
 
 TorchSettings
 {
-    torch                   off;
-    GPU                     on;
-    log                     on;
-    torchModel              "DNN_model.pt"; 
-    frozenTemperature       510;
-    inferenceDeltaTime      1e-6;
-    coresPerNode            16;
+    torch                   $torch_;
+    GPU                     $GPU_;
+    log                     $log_;
+    torchModel              $torchModel_; 
+    frozenTemperature       $frozenTemperature_;
+    inferenceDeltaTime      $inferenceDeltaTime_;
+    coresPerNode            $coresPerNode_;
 }
 
 loadbalancing

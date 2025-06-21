@@ -1,16 +1,30 @@
 #!/bin/sh
-cd ${0%/*} || exit 1    # Run from this directory
+cd "${0%/*}" || exit 1    # Run from this directory
 
 echo "Cleaning log.*"
-rm log.*
+for file in log.*; do
+    [ -e "$file" ] && echo "Removing $file" && rm "$file"
+done
+
 echo "Cleaning processor*"
-rm -r processor*
+for dir in processor*; do
+    [ -e "$dir" ] && echo "Removing directory $dir" && rm -r "$dir"
+done
+
 echo "Cleaning 0/"
-find ./0/ -not -name "p.orig" -and -not -name "T.orig" -and -not -name "U.orig" -and -not -name "Ydefault.orig" -type f -delete
+find ./0/ -not -name "p.orig" -and -not -name "T.orig" -and -not -name "U.orig" -and -not -name "Ydefault.orig" -type f -print -delete
+
 echo "Cleaning time directories (numerical folders) but keeping 0/"
 for dir in [0-9]*; do
     if [ "$dir" != "0" ]; then
-        rm -rf "$dir"
+        echo "Removing directory $dir" && rm -rf "$dir"
+    fi
+done
+
+# Remove additional specific directories if they exist
+for dir in __pycache__ dynamicCode postProcessing temp constant/polyMesh; do
+    if [ -e "$dir" ]; then
+        echo "Removing directory $dir" && rm -rf "$dir"
     fi
 done
 

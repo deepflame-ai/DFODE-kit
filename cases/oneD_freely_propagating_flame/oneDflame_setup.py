@@ -4,159 +4,64 @@ import shutil
 
 from pathlib import Path
 
-def calculate_laminar_flame_properties(mechanism, gas_state):
-    
-    # Initialize the gas object
-    flame_speed_gas = ct.Solution(mechanism)
-    flame_speed_gas.TP = gas_state['initial_temperature'], gas_state['initial_pressure']
-    
-    # Set the equivalence ratio
-    flame_speed_gas.set_equivalence_ratio(
-        gas_state['equivalence_ratio'],
-        fuel=gas_state['fuel_composition'],
-        oxidizer=gas_state['oxidizer_composition'],
-    )
+from dfode_kit.df_interface.flame_configurations import OneDFreelyPropagatingFlameConfig
 
-    # Create and solve the flame
-    width = 0.1
-    flame = ct.FreeFlame(flame_speed_gas, width=width)
-    flame.set_refine_criteria(ratio=3, slope=0.05, curve=0.1, prune=0.0)
-
-    print("Solving premixed flame...")
-    flame.solve(loglevel=0, auto=True)
-
-    # Access laminar flame speed
-    laminar_flame_speed = flame.velocity[0]
-    print(f'{"Laminar Flame Speed":<25}:{laminar_flame_speed:>15.10f} m/s')
-
-    # Calculate laminar flame thickness
-    z, T = flame.grid, flame.T
-    grad = (T[1:] - T[:-1]) / (z[1:] - z[:-1])
-    laminar_flame_thickness = (max(T) - min(T)) / max(grad)
-    print(f'{"Laminar Flame Thickness":<25}:{laminar_flame_thickness:>15.10f} m')
-    
-    final_flame = flame.to_solution_array()
-
-    return laminar_flame_speed, laminar_flame_thickness, final_flame
-
-def update_case_parameters(
-        mechanism,
-        gas_state,
-        flame_speed, 
-        flame_thickness
-    ):
-    params = {
-        'flame_thickness': flame_thickness,
-        'flame_speed': flame_speed,
-        'domain_width': flame_thickness / 10 * 50,
-        'domain_length': 10 * (flame_thickness / 10 * 50),
-        'half_domain_length': 5 * (flame_thickness / 10 * 50),
-        'target_time_step': 1e-6,
-        'chemical_time_scale': flame_thickness / flame_speed,
-        'sample_time_steps': 100,
-    }
-    params['estimated_time_step'] = params['chemical_time_scale'] * 10 / params['sample_time_steps']
-    params['estimated_sim_time'] = params['estimated_time_step'] * (params['sample_time_steps'] + 1)
-    params['estimated_write_time_step'] = params['estimated_time_step']
-
-    for key, value in params.items():
-        print(f"{key.replace('_', ' ').title()}: {value:.2e}")
-
-    unburnt_gas = ct.Solution(mechanism)
-    unburnt_gas.TP = gas_state['initial_temperature'], gas_state['initial_pressure']
-
-    unburnt_gas.set_equivalence_ratio(
-        gas_state['equivalence_ratio'],
-        fuel=gas_state['fuel_composition'],
-        oxidizer=gas_state['oxidizer_composition'],
-    )
-
-    params['unburnt_gas'] = unburnt_gas
-
-    equilibrium_gas = ct.Solution(mechanism)
-    equilibrium_gas.TP = gas_state['initial_temperature'], gas_state['initial_pressure']
-
-    equilibrium_gas.set_equivalence_ratio(
-        gas_state['equivalence_ratio'],
-        fuel=gas_state['fuel_composition'],
-        oxidizer=gas_state['oxidizer_composition'],
-    )
-
-    equilibrium_gas.equilibrate('HP')
-
-    params['equilibrium_gas'] = equilibrium_gas
-
-    return params
-
-def update_cantera_mechanism(mechanism_file):
-    """
-    更新 OpenFOAM `constant/CanteraTorchProperties` 里的 `CanteraMechanismFile` 变量
-    """
-    #orig_file_path = "constant/CanteraTorchProperties.orig"  # 备份文件
-    new_file_path = "constant/CanteraTorchProperties"  # 实际 OpenFOAM 运行的配置
-
-    # 备份原始文件
-    #shutil.copy(orig_file_path, new_file_path)
-
-    with open(new_file_path, "r") as file:
-        lines = file.readlines()
-
-    for i, line in enumerate(lines):
-        if "CanteraMechanismFile" in line:
-            lines[i] = f'CanteraMechanismFile        "{Path(mechanism_file).resolve()}";\n'  # 直接替换
-
-    with open(new_file_path, "w") as file:
-        file.writelines(lines)
-
-    print(f"✅ Updated CanteraMechanismFile to {Path(mechanism_file).resolve()}")
-
-def update_one_d_sample_config(case_params, gas_state):
-    orig_file_path = 'system/sampleConfigDict.orig'
-    new_file_path = 'system/sampleConfigDict'
-
+def update_one_d_sample_config(cfg: OneDFreelyPropagatingFlameConfig, case_path):
+    case_path = Path(case_path).resolve()
+    orig_file_path = case_path / 'system/sampleConfigDict.orig'
+    new_file_path = case_path / 'system/sampleConfigDict'
     shutil.copy(orig_file_path, new_file_path)
-
+    
+    replacements = {
+        "CanteraMechanismFile_": f'"{Path(cfg.mech_path).resolve()}"',
+        "inertSpecie_": f'"{cfg.inert_specie}"',
+        
+        "domainWidth": cfg.domain_width,
+        "domainLength": cfg.domain_length,
+        "ignitionRegion": cfg.ignition_region,
+        
+        "simTimeStep": cfg.sim_time_step,
+        "simTime": cfg.sim_time,
+        "simWriteInterval": cfg.sim_write_interval,
+        
+        "UInlet": cfg.inlet_speed,
+        "pInternal": cfg.p0,
+    }
+    
     with open(new_file_path, 'r') as file:
         lines = file.readlines()
 
     for i, line in enumerate(lines):
-        if "domainWidth" in line:
-            lines[i] = line.replace("placeHolder", f'{case_params["domain_width"]}')
-        if "domainLength" in line:
-            lines[i] = line.replace("placeHolder", f'{case_params["domain_length"]}')
-        if "halfDomainLength" in line:
-            lines[i] = line.replace("placeHolder", f'{case_params["half_domain_length"]}')
-        if "targetNetTimeStep" in line:
-            lines[i] = line.replace("placeHolder", f'{case_params["target_time_step"]}')
-        if "simEndTime" in line:
-            lines[i] = line.replace("placeHolder", f'{case_params["estimated_sim_time"]}')
-        if "simSampleTimeStep" in line:
-            lines[i] = line.replace("placeHolder", f'{case_params["estimated_time_step"]}')
-        if "simWriteInterval" in line:
-            lines[i] = line.replace("placeHolder", f'{case_params["estimated_write_time_step"]}')
-        if "UInlet" in line:
-            lines[i] = line.replace("placeHolder", f'{case_params["flame_speed"]}')
-        if "pInternal" in line:
-            lines[i] = line.replace("placeHolder", f'{gas_state["initial_pressure"]}')
+        for key, value in replacements.items():
+            if key in line:
+                lines[i] = line.replace("placeHolder", str(value))
+                
+        # Update unburnt states
         if "unburntStates" in line:
-            state_strings = [f'{"TUnburnt":<20}{case_params["unburnt_gas"].T:>16.10f};']
-            for _, species in enumerate(case_params["unburnt_gas"].species_names):
-                key_string = f'{species}Unburnt'
-                state_strings.append(f'{key_string:<20}{case_params["unburnt_gas"].Y[_]:>16.10f};')
+            state_strings = [f'{"TUnburnt":<20}{cfg.initial_gas.T:>16.10f};']
+            state_strings += [
+                f'{species}Unburnt'.ljust(20) + f'{cfg.initial_gas.Y[idx]:>16.10f};'
+                for idx, species in enumerate(cfg.species_names)
+            ]
             lines[i] = '\n'.join(state_strings) + '\n\n'
+
+        # Update equilibrium states
         if "equilibriumStates" in line:
-            state_strings = [f'{"TBurnt":<20}{case_params["equilibrium_gas"].T:>16.10f};']
-            for _, species in enumerate(case_params["equilibrium_gas"].species_names):
-                key_string = f'{species}Burnt'
-                state_strings.append(f'{key_string:<20}{case_params["equilibrium_gas"].Y[_]:>16.10f};')
+            state_strings = [f'{"TBurnt":<20}{cfg.burnt_gas.T:>16.10f};']
+            state_strings += [
+                f'{species}Burnt'.ljust(20) + f'{cfg.burnt_gas.Y[idx]:>16.10f};'
+                for idx, species in enumerate(cfg.species_names)
+            ]
             lines[i] = '\n'.join(state_strings) + '\n\n'
 
     with open(new_file_path, 'w') as file:
         file.writelines(lines)
 
-def create_0_species_files(case_params):
-    orig_0_file_path = '0/Ydefault.orig'
-    for _, species in  enumerate(case_params["unburnt_gas"].species_names):
+def create_0_species_files(cfg: OneDFreelyPropagatingFlameConfig, case_path):
+    case_path = Path(case_path).resolve()
+    orig_0_file_path = case_path / '0/Ydefault.orig'
+    
+    for _, species in  enumerate(cfg.species_names):
         new_0_file_path = f'0/{species}.orig'
         shutil.copy(orig_0_file_path, new_0_file_path)
 
@@ -167,15 +72,15 @@ def create_0_species_files(case_params):
             if "Ydefault" in line:
                 lines[i] = line.replace("Ydefault", f'{species}')
             if "uniform 0" in line:
-                lines[i] = line.replace("0", f'{case_params["unburnt_gas"].Y[_]}')
+                lines[i] = line.replace("0", f'{cfg.initial_gas.Y[_]}')
         
         with open(new_0_file_path, 'w') as file:
             file.writelines(lines)
 
-def update_set_fields_dict(case_params):
-    orig_setFieldsDict_path = 'system/setFieldsDict.orig'
-    new_setFieldsDict_path = 'system/setFieldsDict'
-
+def update_set_fields_dict(cfg: OneDFreelyPropagatingFlameConfig, case_path):
+    case_path = Path(case_path).resolve()
+    orig_setFieldsDict_path = case_path / 'system/setFieldsDict.orig'
+    new_setFieldsDict_path = case_path / 'system/setFieldsDict'
     shutil.copy(orig_setFieldsDict_path, new_setFieldsDict_path)
 
     with open(new_setFieldsDict_path, 'r') as file:
@@ -184,15 +89,29 @@ def update_set_fields_dict(case_params):
     for i, line in enumerate(lines):
         if "unburntStatesPlaceHolder" in line:
             state_strings = [f'\tvolScalarFieldValue {"T":<10} $TUnburnt']
-            for _, species in enumerate(case_params["unburnt_gas"].species_names):
+            for _, species in enumerate(cfg.species_names):
                 state_strings.append(f'volScalarFieldValue {species:<10} ${species}Unburnt')
             lines[i] = '\n\t'.join(state_strings) + '\n'
         if "equilibriumStatesPlaceHolder" in line:
             state_strings = [f'\t\t\tvolScalarFieldValue {"T":<10} $TBurnt']
-            for _, species in enumerate(case_params["equilibrium_gas"].species_names):
+            for _, species in enumerate(cfg.species_names):
                 state_strings.append(f'volScalarFieldValue {species:<10} ${species}Burnt')
             lines[i] = '\n\t\t\t'.join(state_strings) + '\n'
             
             
     with open(new_setFieldsDict_path, 'w') as file:
         file.writelines(lines)
+
+def setup_one_d_flame_case(cfg: OneDFreelyPropagatingFlameConfig, case_path):
+    case_path = Path(case_path).resolve()
+    
+    # Update sampleConfigDict
+    update_one_d_sample_config(cfg, case_path)
+    
+    # Create 0/ species files
+    create_0_species_files(cfg, case_path)
+    
+    # Update setFieldsDict
+    update_set_fields_dict(cfg, case_path)
+    
+    print(f"One-dimensional flame case setup completed at: {case_path}")
