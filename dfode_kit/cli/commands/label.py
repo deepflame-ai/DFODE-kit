@@ -12,6 +12,7 @@ def parse_time_steps(time_steps_str):
 
 def add_command_parser(subparsers):
     label_parser = subparsers.add_parser('label', help='Label data.')
+    
     label_parser.add_argument('--mech', 
                               required=True,
                               type=str, 

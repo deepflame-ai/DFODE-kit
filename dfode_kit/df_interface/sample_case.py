@@ -37,7 +37,7 @@ def concatenate_species_arrays(species_names, directory_path):
     else:
         raise ValueError("No valid species arrays found to concatenate.")
 
-def save_arrays_to_hdf5(root_dir, mechanism, hdf5_file_path):
+def save_arrays_to_hdf5(root_dir, mechanism, hdf5_file_path, include_mesh=True):
     """Iterate through directories in root_dir, concatenate arrays, and save to HDF5."""
     root_path = Path(root_dir).resolve()
     mechanism = Path(mechanism).resolve()
@@ -52,6 +52,7 @@ def save_arrays_to_hdf5(root_dir, mechanism, hdf5_file_path):
         hdf5_file.attrs['mechanism'] = str(mechanism)
         hdf5_file.attrs['species_names'] = species_names
         
+        scalar_group = hdf5_file.create_group('scalar_fields')
         
         numeric_dirs = [
             dir_path for dir_path in root_path.iterdir()
@@ -67,9 +68,28 @@ def save_arrays_to_hdf5(root_dir, mechanism, hdf5_file_path):
                 concatenated_array = concatenate_species_arrays(species_names, dir_path)
                 
                 # Create a dataset in HDF5 with the directory path as the key
-                hdf5_file.create_dataset(str(dir_path.name), data=concatenated_array)
+                scalar_group.create_dataset(str(dir_path.name), data=concatenated_array)
             except ValueError as e:
                 print(f"Error processing directory {dir_path}: {e}")
+        
+        if include_mesh:
+            mesh_group = hdf5_file.create_group('mesh')
+            mesh_files = [
+                root_path / 'temp/0/Cx',
+                root_path / 'temp/0/Cy',
+                root_path / 'temp/0/Cz',
+                root_path / 'temp/0/V',
+            ]
+            
+            for mesh_file in mesh_files:
+                if mesh_file.is_file():
+                    try:
+                        mesh_data = read_openfoam_scalar(mesh_file)
+                        mesh_group.create_dataset(str(mesh_file.name), data=mesh_data)
+                    except ValueError as e:
+                        print(f"Error reading mesh file {mesh_file}: {e}")
+                else:
+                    print(f"Mesh file not found: {mesh_file}")
 
     print(f"Saved concatenated arrays to {hdf5_file_path}")
     

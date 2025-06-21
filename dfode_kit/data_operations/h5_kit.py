@@ -8,10 +8,10 @@ def load_and_print_hdf5_contents(hdf5_file_path):
         for attr in hdf5_file.attrs:
             print(f"{attr}: {hdf5_file.attrs[attr]}")
         
-        # Print the names of the datasets in the file
-        print("\nDatasets in the HDF5 file:")
-        for dataset_name in hdf5_file.keys():
-            print(f"Dataset: {dataset_name}")
-            # Print the contents of each dataset
-            data = hdf5_file[dataset_name][:]
-            print(data)
+        # Print the names of the groups and datasets in the file
+        print("\nGroups and datasets in the HDF5 file:")
+        for group_name, group in hdf5_file.items():
+            print(f"Group: {group_name}")
+            for dataset_name in group.keys():
+                dataset = group[dataset_name]
+                print(f"  Dataset: {dataset_name}, Shape: {dataset.shape}")
