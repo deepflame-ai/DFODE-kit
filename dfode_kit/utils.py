@@ -37,3 +37,44 @@ def read_openfoam_scalar(file_path):
     dim_array = np.loadtxt(selected_lines).reshape(-1, 1)
 
     return dim_array
+
+def BCT(x, lam=0.1):
+    """
+    Box-Cox Transformation (BCT)
+
+    Args:
+        x (np.ndarray): Input array.
+        lam (float): Lambda parameter for the transformation.
+
+    Returns:
+        np.ndarray: Transformed values.
+
+    Raises:
+        ValueError: If any values in x are negative.
+    """
+    if np.any(x < 0):
+        raise ValueError("Input array contains negative values. Box-Cox transformation is not defined for negative values.")
+
+    if lam == 0:
+        return np.log(x)
+    else:
+        return (np.power(x, lam) - 1) / lam
+
+def inverse_BCT(y, lam=0.1):
+    """
+    Inverse Box-Cox Transformation
+
+    Args:
+        y (np.ndarray): Transformed array.
+        lam (float): Lambda parameter for the reverse transformation.
+
+    Returns:
+        np.ndarray: Original values.
+
+    Raises:
+        ValueError: If lam is zero or if y contains negative values.
+    """
+    if lam == 0:
+        return np.exp(y)
+    else:
+        return np.power(lam * y + 1, 1 / lam)

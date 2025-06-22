@@ -33,8 +33,8 @@ def add_command_parser(subparsers):
 
 def handle_command(args):
     try:
-        min_time_step, max_time_step = args.time_steps
-        label_main(args.original_data_path, args.mech, min_time_step, max_time_step, args.save_file_path)
+        min_time_step, max_time_step = args.time
+        label_main(args.source, args.mech, min_time_step, max_time_step, args.save)
     except (FileNotFoundError, ValueError) as e:
         print(f"Error: {e}")
     except Exception as e:
