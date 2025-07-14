@@ -9,6 +9,7 @@ from dfode_kit.utils import is_number, read_openfoam_scalar
 def concatenate_species_arrays(species_names, directory_path):
     """Concatenate scalar arrays from OpenFOAM files for each species in the specified directory."""
     all_arrays = []
+    num_cell = None
     directory_path = Path(directory_path)
     
     # Ensure the provided directory exists
@@ -24,13 +25,32 @@ def concatenate_species_arrays(species_names, directory_path):
             try:
                 # Read the scalar values using the existing function
                 species_array = read_openfoam_scalar(file_path)
+                
+                # Check if species_array is a numpy array
+                if isinstance(species_array, np.ndarray):
+                    # Assign num_cell on the first valid species_array
+                    if num_cell is None:
+                        num_cell = species_array.shape[0]
+                    else:
+                        # Ensure the shape matches num_cell
+                        if species_array.shape[0] != num_cell:
+                            raise ValueError(f"Shape mismatch for {species}: expected {num_cell}, got {species_array.shape[0]}.")
+
                 all_arrays.append(species_array)
             except ValueError as e:
                 print(f"Error reading {file_path}: {e}")
         else:
             print(f"File not found: {file_path}")
     
-    # Concatenate all arrays into one big array
+    # Replace non-numpy arrays (that are floats) with numpy arrays of uniform values
+    for i in range(len(all_arrays)):
+        if not isinstance(all_arrays[i], np.ndarray):
+            if isinstance(all_arrays[i], float):
+                all_arrays[i] = np.full((num_cell, 1), all_arrays[i])  # Create a uniform array
+            else:
+                print(f"Warning: {all_arrays[i]} is not a numpy array or float.")
+
+    # Concatenate all arrays into one big array if there are valid arrays
     if all_arrays:
         concatenated_array = np.concatenate(all_arrays, axis=1)
         return concatenated_array
