@@ -6,8 +6,39 @@ import cantera as ct
 
 from dfode_kit.utils import is_number, read_openfoam_scalar
 
-def concatenate_species_arrays(species_names, directory_path):
-    """Concatenate scalar arrays from OpenFOAM files for each species in the specified directory."""
+def gather_species_arrays(species_names, directory_path) -> np.ndarray:
+    """
+    Concatenate scalar arrays from OpenFOAM files for each species in the specified directory.
+
+    Parameters
+    ----------
+    species_names : list of str
+        A list of species names corresponding to the files in the directory.
+    directory_path : str
+        The path to the directory containing the OpenFOAM files.
+
+    Returns
+    -------
+    numpy.ndarray
+        A 2D numpy array containing the concatenated scalar arrays for each species.
+    
+    Raises
+    ------
+    ValueError
+        If the provided directory does not exist, if there is a shape mismatch 
+        between arrays, or if no valid species arrays are found to concatenate.
+
+    Notes
+    -----
+    This function reads scalar values from files named after the species and 
+    ensures that all arrays have the same number of cells. If a scalar value 
+    is a float, it is converted into a uniform numpy array.
+
+    Examples
+    --------
+    >>> gather_species_arrays(['species1', 'species2'], '/path/to/directory')
+    array([[...], [...], ...])
+    """
     all_arrays = []
     num_cell = None
     directory_path = Path(directory_path)
@@ -57,8 +88,44 @@ def concatenate_species_arrays(species_names, directory_path):
     else:
         raise ValueError("No valid species arrays found to concatenate.")
 
-def save_arrays_to_hdf5(root_dir, mechanism, hdf5_file_path, include_mesh=True):
-    """Iterate through directories in root_dir, concatenate arrays, and save to HDF5."""
+def df_to_h5(root_dir, mechanism, hdf5_file_path, include_mesh=True):
+    """
+    Iterate through directories in root_dir, concatenate arrays, and save to an HDF5 file.
+
+    Parameters
+    ----------
+    root_dir : str
+        The path to the root directory containing subdirectories with data.
+    mechanism : str
+        The path to the mechanism file to be used by the Cantera solution.
+    hdf5_file_path : str
+        The path where the HDF5 file will be saved.
+    include_mesh : bool, optional
+        Whether to include mesh data in the HDF5 file (default is True).
+
+    Returns
+    -------
+    None
+        This function does not return any value. It saves the concatenated data 
+        directly to an HDF5 file.
+
+    Raises
+    ------
+    ValueError
+        If there are issues with reading directories or files, or if the data 
+        cannot be processed.
+
+    Notes
+    -----
+    This function processes directories containing numerical data, concatenates 
+    scalar arrays for each species, and saves the results in an HDF5 file. 
+    It also optionally includes mesh data from predefined mesh files.
+
+    Examples
+    --------
+    >>> df_to_h5('/path/to/root', '/path/to/mechanism.yaml', '/path/to/output.h5')
+    Saved concatenated arrays to /path/to/output.h5
+    """
     root_path = Path(root_dir).resolve()
     mechanism = Path(mechanism).resolve()
     hdf5_file_path = Path(hdf5_file_path)
@@ -85,7 +152,7 @@ def save_arrays_to_hdf5(root_dir, mechanism, hdf5_file_path, include_mesh=True):
         for dir_path in numeric_dirs:
             # Concatenate arrays for the current directory
             try:
-                concatenated_array = concatenate_species_arrays(species_names, dir_path)
+                concatenated_array = gather_species_arrays(species_names, dir_path)
                 
                 # Create a dataset in HDF5 with the directory path as the key
                 scalar_group.create_dataset(str(dir_path.name), data=concatenated_array)

@@ -83,4 +83,7 @@ def inverse_BCT(y, lam=0.1):
     if lam == 0:
         return np.exp(y)
     else:
-        return np.power(lam * y + 1, 1 / lam)
+        if np.any(y * lam + 1 < 0):
+            raise ValueError('FATAL ERROR: Invalid input for rev_BCT.')
+        else:
+            return np.power(lam * y + 1, 1 / lam)

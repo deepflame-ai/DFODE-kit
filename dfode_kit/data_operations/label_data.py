@@ -3,16 +3,21 @@ import numpy as np
 import cantera as ct
 import os
 
-def advance_reactor(gas, state, reactor, reactor_net, min_time_step, max_time_step):
+def advance_reactor_1(gas, state, reactor, reactor_net, time_step):
     """Advance the reactor simulation for a given state."""
-    gas.TPY = state[0], state[1], state[2:2 + gas.n_species]
+    state = state.flatten()
     
-    time_step = np.random.uniform(min_time_step, max_time_step)
+    expected_shape = (2 + gas.n_species,)
+    assert state.shape == expected_shape
+    
+    gas.TPY = state[0], state[1], state[2:]
+    
     reactor.syncState()
     reactor_net.reinitialize()
     reactor_net.advance(time_step)
+    reactor_net.set_initial_time(0.0)
     
-    return time_step, gas
+    return gas
 
 def validate_inputs(original_data_path, mech_path, min_time_step, max_time_step):
     """Validate input file paths and time step values."""
@@ -53,7 +58,7 @@ def main(original_data_path, mech_path, min_time_step, max_time_step, save_file_
 
     # Process each state in the dataset
     for i, state in enumerate(test_data):
-        time_step, gas = advance_reactor(gas, state, reactor, reactor_net, min_time_step, max_time_step)
+        time_step, gas = advance_reactor_1(gas, state, reactor, reactor_net, min_time_step, max_time_step)
         labeled_data[i, :2 + n_species] = state[:2 + n_species]
         labeled_data[i, 2 + n_species] = time_step
         labeled_data[i, 2 + n_species + 1:] = np.array([gas.T, gas.P] + list(gas.Y))
