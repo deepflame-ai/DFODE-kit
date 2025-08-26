@@ -296,6 +296,8 @@ def integrate_h5(
                 print(f"Error processing dataset '{name}': {e}")
             
         with h5py.File(file_path, 'a') as f:  # Use 'a' to append
+            if 'nn_integration' in f:
+                del f['nn_integration']  # Delete the existing group
             nn_group = f.create_group('nn_integration')
             
             for dataset_name, processed_data in processed_data_dict.items():

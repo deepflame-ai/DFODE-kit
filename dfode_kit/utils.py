@@ -1,3 +1,4 @@
+import torch
 import numpy as np
 
 def is_number(s):
@@ -87,3 +88,49 @@ def inverse_BCT(y, lam=0.1):
             raise ValueError('FATAL ERROR: Invalid input for rev_BCT.')
         else:
             return np.power(lam * y + 1, 1 / lam)
+
+def BCT_torch(x, lam=0.1):
+    """
+    Box-Cox Transformation (BCT) for PyTorch tensors
+
+    Args:
+        x (torch.Tensor): Input tensor.
+        lam (float): Lambda parameter for the transformation.
+
+    Returns:
+        torch.Tensor: Transformed values.
+
+    Raises:
+        ValueError: If any values in x are negative.
+    """
+    if torch.any(x < 0):
+        raise ValueError("Input tensor contains negative values. Box-Cox transformation is not defined for negative values.")
+
+    if lam == 0:
+        return torch.log(x)
+    else:
+        return (torch.pow(x, lam) - 1) / lam
+
+def inverse_BCT_torch(y, lam=0.1):
+    """
+    Inverse Box-Cox Transformation for PyTorch tensors
+
+    Args:
+        y (torch.Tensor): Transformed tensor.
+        lam (float): Lambda parameter for the reverse transformation.
+
+    Returns:
+        torch.Tensor: Original values.
+
+    Raises:
+        ValueError: If lam is zero or if y contains invalid values.
+    """
+    if lam == 0:
+        return torch.exp(y)
+    else:
+        if torch.any(y * lam + 1 < 0):
+            raise ValueError('FATAL ERROR: Invalid input for inverse_BCT_torch.')
+        else:
+            return torch.pow(lam * y + 1, 1 / lam)
+        
+        

@@ -1,4 +1,4 @@
-from .utils import read_openfoam_scalar, BCT, inverse_BCT
+from .utils import read_openfoam_scalar, BCT, inverse_BCT, BCT_torch, inverse_BCT_torch
 
 from .df_interface.sample_case import gather_species_arrays, df_to_h5
 
