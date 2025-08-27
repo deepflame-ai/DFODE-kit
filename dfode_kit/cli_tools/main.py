@@ -1,5 +1,5 @@
 import argparse
-from dfode_kit.cli.command_loader import load_commands
+from dfode_kit.cli_tools.command_loader import load_commands
 
 def main():
     parser = argparse.ArgumentParser(prog='dfode-kit', description=(

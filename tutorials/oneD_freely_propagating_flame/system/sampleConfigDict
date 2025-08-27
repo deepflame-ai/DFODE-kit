@@ -32,8 +32,8 @@ domainLength            0.018471809630057887;
 ignitionRegion          0.009235904815028943;
 
 // controlDict & sampling settings
-simTimeStep             0.00101;
-simTime                 0.00101;
+simTimeStep             0.00011;
+simTime                 0.00011;
 simWriteInterval        1e-05;
 
 // setFieldsDict & 0 dir settings

@@ -198,3 +198,7 @@ cython_debug/
 *.hdf5
 *.npy
 *.npz
+
+# PyTorch
+*.pt
+*.pth

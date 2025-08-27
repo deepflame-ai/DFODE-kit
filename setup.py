@@ -10,7 +10,7 @@ setup(
     ],
     entry_points={
         'console_scripts': [
-            'dfode-kit = dfode_kit.cli.main:main',  # Main entry point for CLI
+            'dfode-kit = dfode_kit.cli_tools.main:main',  # Main entry point for CLI
             'new_subcommand = dfode_kit.new_subcommand:handle_command',
         ],
     },

@@ -1,7 +1,7 @@
 import importlib
 import pkgutil
 
-def load_commands(package_name='dfode_kit.cli.commands'):
+def load_commands(package_name='dfode_kit.cli_tools.commands'):
     commands = {}
 
     # Dynamically load modules from the specified package
