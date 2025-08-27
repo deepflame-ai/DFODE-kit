@@ -1,0 +1,59 @@
+/*--------------------------------*- C++ -*----------------------------------*\
+ =========                 |
+ \      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
+  \    /   O peration     | Website:  https://openfoam.org
+   \  /    A nd           | Version:  7
+    \/     M anipulation  |
+\*---------------------------------------------------------------------------*/
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       dictionary;
+    location    "system";
+    object      setFieldsDict;
+}
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+#include "sampleConfigDict"
+
+W       $domainWidth;
+L       $domainLength;
+halfL   $ignitionRegion;
+
+defaultFieldValues
+(
+	volScalarFieldValue T          $TUnburnt
+	volScalarFieldValue H          $HUnburnt
+	volScalarFieldValue H2         $H2Unburnt
+	volScalarFieldValue O          $OUnburnt
+	volScalarFieldValue OH         $OHUnburnt
+	volScalarFieldValue H2O        $H2OUnburnt
+	volScalarFieldValue O2         $O2Unburnt
+	volScalarFieldValue HO2        $HO2Unburnt
+	volScalarFieldValue H2O2       $H2O2Unburnt
+	volScalarFieldValue N2         $N2Unburnt
+);
+
+regions
+(
+    boxToCell
+    {
+        box ($halfL 0 0) ($L 1 1);
+        fieldValues
+        (
+			volScalarFieldValue T          $TBurnt
+			volScalarFieldValue H          $HBurnt
+			volScalarFieldValue H2         $H2Burnt
+			volScalarFieldValue O          $OBurnt
+			volScalarFieldValue OH         $OHBurnt
+			volScalarFieldValue H2O        $H2OBurnt
+			volScalarFieldValue O2         $O2Burnt
+			volScalarFieldValue HO2        $HO2Burnt
+			volScalarFieldValue H2O2       $H2O2Burnt
+			volScalarFieldValue N2         $N2Burnt
+        );
+    }
+);
+
+// ************************************************************************* //

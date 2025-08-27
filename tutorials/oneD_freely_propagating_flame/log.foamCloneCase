@@ -1,0 +1,8 @@
+Making ./temp case directory
+Copying directories from . to ./temp:
+./system to ... system
+./constant to ... constant
+./0 to ... 0
+Copying scripts from . to ./temp:
+./Allclean to ... Allclean
+./Allrun to ... Allrun

@@ -1,0 +1,41 @@
+/*--------------------------------*- C++ -*----------------------------------*\
+ =========                 |
+ \      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
+  \    /   O peration     | Website:  https://openfoam.org
+   \  /    A nd           | Version:  7
+    \/     M anipulation  |
+\*---------------------------------------------------------------------------*/
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       dictionary;
+    location    "system";
+    object      setFieldsDict;
+}
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+#include "sampleConfigDict"
+
+W       $domainWidth;
+L       $domainLength;
+halfL   $ignitionRegion;
+
+defaultFieldValues
+(
+    unburntStatesPlaceHolder
+);
+
+regions
+(
+    boxToCell
+    {
+        box ($halfL 0 0) ($L 1 1);
+        fieldValues
+        (
+            equilibriumStatesPlaceHolder
+        );
+    }
+);
+
+// ************************************************************************* //
