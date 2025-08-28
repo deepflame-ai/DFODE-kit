@@ -2,14 +2,6 @@
 
 DFODE-kit is an open-source Python package designed to accelerate combustion simulations by efficiently solving flame chemical kinetics governed by high-dimensional stiff ordinary differential equations (ODEs). This package integrates deep learning methodologies to replace conventional numerical integration, enabling significant speedups and improved accuracy.
 
-## Table of Contents
-- [DFODE-kit: Deep Learning Package for Combustion Kinetics](#dfode-kit-deep-learning-package-for-combustion-kinetics)
-  - [Table of Contents](#table-of-contents)
-  - [Features](#features)
-  - [Installation](#installation)
-  - [Usage](#usage)
-    - [Commands Available:](#commands-available)
-
 ## Features
 - **Efficient Sampling Module**: Extracts high-quality thermochemical states from low-dimensional manifolds in canonical flames.
 - **Data Augmentation**: Enhances training datasets to approximate high-dimensional composition spaces in turbulent flames.
@@ -38,3 +30,5 @@ dfode-kit CMD ARGS
 - `augment`: Apply random noise and physical constraints to improve the training dataset.
 - `label`: Generate supervised learning labels using Cantera's CVODE solver.
 - `train`: Train neural network models based on the specified datasets and parameters.
+
+A comprehensive tutorial guide [notebook](https://github.com/DeepFlame-ML/DFODE-kit/blob/main/tutorials/oneD_freely_propagating_flame/dfode_kit_tutorial.ipynb) is provided to help you get started quickly.
