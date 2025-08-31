@@ -272,8 +272,8 @@ def integrate_h5(
                 
                 processed_data[i, :] = new_state
             
-            print(processed_data[0])
-            print(processed_data[-1])
+            # print(processed_data[0])
+            # print(processed_data[-1])
             processed_data_dict[name] = processed_data
         
         with h5py.File(file_path, 'a') as f:  # Use 'a' to append
