@@ -12,7 +12,7 @@ def add_command_parser(subparsers):
         '--source_file',
         required=True,
         type=str,
-        help='Path to the source NUMPY file.' 
+        help='Path to the source NUMPY file. (With source data and labeled data)' 
     )
     train_parser.add_argument(
         '--output_path',

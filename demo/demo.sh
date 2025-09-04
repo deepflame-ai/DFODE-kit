@@ -56,7 +56,15 @@ dfode-kit augment --mech mechanisms/Burke2012_s9r23.yaml \
     --output_file tutorials/oneD_freely_propagating_flame/data \
     --dataset_num 20000
 
+
 ## 4.train
+
+dfode-kit label --mech "$MECH_PATH" \
+    --time 1e-06 \
+    --source tutorials/oneD_freely_propagating_flame/data.npy \
+    --save tutorials/oneD_freely_propagating_flame/dataset.npy
+
+## 5.train
 
 # Finally, we train the model using the augmented dataset.
 # The --source_file option specifies the NumPy file containing the training data,
@@ -64,5 +72,5 @@ dfode-kit augment --mech mechanisms/Burke2012_s9r23.yaml \
 # The mechanism file is again specified to ensure the model is aware of the chemical kinetics involved.
 
 dfode-kit train --mech mechanisms/Burke2012_s9r23.yaml     \
-    --source_file tutorials/oneD_freely_propagating_flame/data.npy     \
+    --source_file tutorials/oneD_freely_propagating_flame/dataset.npy     \
     --output_path tutorials/oneD_freely_propagating_flame/demo_model.pt

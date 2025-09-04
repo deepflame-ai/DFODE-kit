@@ -14,11 +14,35 @@ def train(
     time_step: float = 1e-6,
 ) -> np.ndarray:
     
-    labeled_data = label_npy(
-    mech_path=mech_path,
-    time_step= time_step,
-    source_path=source_file,
-    )
+    """
+    Here is a simple demo of train script.
+
+    Trains a neural network model to predict changes in thermochemical states based on input data.
+
+    This function loads labeled data from a specified source file, initializes a chemical reaction model,
+    and constructs a multi-layer perceptron (MLP) for training. The model learns to predict the changes 
+    in species concentrations over time based on the input features. The training process includes 
+    normalization of input and output data, computation of multiple loss functions, and optimization of 
+    the model parameters.
+
+    Parameters
+    ----------
+    mech_path : str
+        Path to the mechanism file for the chemical model.
+    source_file : str
+        Path to the input data file containing labeled data.
+    output_path : str
+        Path to save the trained model and normalization parameters.
+    time_step : float, optional
+        Time step for the simulation, default is 1e-06 second.
+
+    Returns
+    -------
+    np.ndarray
+        Returns the trained model's output as a numpy array (if applicable).
+    """
+
+    labeled_data = np.load(source_file)
 
     gas = ct.Solution(mech_path)
     n_species = gas.n_species
