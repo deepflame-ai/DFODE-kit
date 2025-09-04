@@ -39,5 +39,5 @@ A comprehensive tutorial guide of [tutorial](https://github.com/DeepFlame-ML/DFO
 - **dfode-kit**: Main procedure and functions.
 - **mechanisms**: Thermochemical mechanism folder.
 - **model_test**: Model testing with priori and posteriori validataions
-- **tutorials**: Tutorias with sampling cases 
+- **tutorials**: Tutorials with sampling cases 
 
