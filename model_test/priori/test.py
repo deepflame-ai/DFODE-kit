@@ -3,8 +3,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import cantera as ct
 
-DFODE_ROOT = os.environ['DFODE_ROOT']
-from dfode_kit.data_operations import integrate_h5, touch_h5
+from dfode_kit import DFODE_ROOT
+from dfode_kit.data_operations import integrate_h5, touch_h5, calculate_error
 # from dfode_kit.dfode_core.test.test import test_npy
 from dfode_kit.dfode_core.model.mlp import MLP
 
@@ -21,7 +21,11 @@ model_settings = {
     'mech': f"{DFODE_ROOT}/mechanisms/Burke2012_s9r23.yaml"
 }
 
-integrate_h5("tutorial_data.h5", 1e-6, nn_integration=False, model_settings=model_settings)
-touch_h5("tutorial_data.h5")
-
-# test_npy("test.npy", model_settings=model_settings)
+file_path = f"{DFODE_ROOT}/model_test/priori/tutorial_data.h5"
+save_path1 = f"{DFODE_ROOT}/model_test/priori/label.h5"
+save_path2 = f"{DFODE_ROOT}/model_test/priori/model_output.h5"
+integrate_h5(file_path, save_path1, save_path2, 1e-6, nn_integration=True, model_settings=model_settings)
+touch_h5(save_path1)   ##  Time_step, T, P, Y
+touch_h5(save_path2)
+touch_h5(file_path)
+calculate_error(mech_path, save_path1, save_path2)

@@ -25,6 +25,13 @@ Once you have installed DFODE-kit, you can use it to sample data, augment datase
 dfode-kit CMD ARGS
 ```
 
+## Directories
+- **dfode-kit**: Main procedure and functions.
+- **mechanisms**: Thermochemical mechanism folder.
+- **model_test**: Model testing with priori and posteriori validataions
+- **tutorials**: Tutorias with sampling cases 
+
+
 ### Commands Available:
 - `sample`: Perform raw data sampling from canonical flame simulations.
 - `augment`: Apply random noise and physical constraints to improve the training dataset.
@@ -32,3 +39,6 @@ dfode-kit CMD ARGS
 - `train`: Train neural network models based on the specified datasets and parameters.
 
 A comprehensive tutorial guide of [tutorial](https://github.com/DeepFlame-ML/DFODE-kit/blob/main/tutorials/readme.md) is provided to help you get started quickly. Besides, the Jupyter Notebook version [notebook](https://github.com/DeepFlame-ML/DFODE-kit/blob/main/tutorials/oneD_freely_propagating_flame/dfode_kit_tutorial.ipynb) is provided here.
+
+
+

@@ -10,8 +10,8 @@
 # canonical flame configurations that retain the essential topology of high-dimensional turbulent flames. This approach ensures 
 # both computational efficiency and physical representativeness of the training datasets.
 # In this tutorial, we will demonstrate how to use DFODE-kit to sample a low-dimensional manifold of thermochemical states from 
-# a one-dimensional laminar freely propagating flame simulated with DeepFlame. Users can use `dfode_kit_init.ipynb` to in the 
-# `tutorials/oneD_freely_propagating_flame` directory initialize the simulation and update the dictionary files for the simulation.
+# a one-dimensional laminar freely propagating flame simulated with DeepFlame. Users can use `dfode_kit_init.ipynb` in the 
+# `tutorials/oneD_freely_propagating_flame` directory to initialize the simulation and update the dictionary files for the simulation.
 
 dfode_kit_init.ipynb
 
@@ -86,3 +86,6 @@ dfode-kit label --mech ../../mechanisms/Burke2012_s9r23.yaml \
 dfode-kit train --mech ../../mechanisms/Burke2012_s9r23.yaml     \
     --source_file ./dataset.npy     \
     --output_path ./demo_model.pt
+
+## 6.model test
+# Users can use `test.py` in the `model_test/priori` directory to test a pre-trained model in the priori dataset.

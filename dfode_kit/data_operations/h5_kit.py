@@ -214,7 +214,9 @@ def nn_integrate(orig_arr, model_path, device, model_class, model_layers, time_s
     return new_states
 
 def integrate_h5(
-    file_path, 
+    file_path,
+    save_path1,
+    save_path2, 
     time_step, 
     cvode_integration=True,
     nn_integration=False,
@@ -272,11 +274,9 @@ def integrate_h5(
                 
                 processed_data[i, :] = new_state
             
-            # print(processed_data[0])
-            # print(processed_data[-1])
             processed_data_dict[name] = processed_data
         
-        with h5py.File(file_path, 'a') as f:  # Use 'a' to append
+        with h5py.File(save_path1, 'a') as f:  # Use 'a' to append
             cvode_group = f.create_group('cvode_integration')
             
             for dataset_name, processed_data in processed_data_dict.items():
@@ -295,7 +295,7 @@ def integrate_h5(
             except Exception as e:
                 print(f"Error processing dataset '{name}': {e}")
             
-        with h5py.File(file_path, 'a') as f:  # Use 'a' to append
+        with h5py.File(save_path2, 'a') as f:  # Use 'a' to append
             if 'nn_integration' in f:
                 del f['nn_integration']  # Delete the existing group
             nn_group = f.create_group('nn_integration')
@@ -303,3 +303,40 @@ def integrate_h5(
             for dataset_name, processed_data in processed_data_dict.items():
                 nn_group.create_dataset(dataset_name, data=processed_data)
                 print(f'Saved processed dataset: {dataset_name} in nn_integration group')
+
+
+def calculate_error(
+    mech_path,
+    save_path1,
+    save_path2, 
+    error = 'RMSE'
+):
+    gas = ct.Solution(mech_path)
+
+    with h5py.File(save_path1, 'r') as f1, h5py.File(save_path2, 'r') as f2:
+        cvode_group = f1['cvode_integration']
+        nn_group = f2['nn_integration']
+        
+        common_datasets = set(cvode_group.keys()) & set(nn_group.keys())
+        
+        sorted_datasets = sorted(common_datasets, key=lambda x: float(x))
+        results = {}
+        
+        for ds_name in sorted_datasets:
+            cvode_data = cvode_group[ds_name][:, 3:]  # 跳过前3列，取后9列
+            nn_data = nn_group[ds_name][:, 3:]        # 跳过前3列，取后9列
+            
+            if error == "RMSE":
+                rmse_per_dim = np.sqrt(np.mean((cvode_data - nn_data)**2, axis=0))
+                results[ds_name] = rmse_per_dim
+                
+                print(f"RMSE of ataset: {ds_name}")
+                for dim_idx, rmse_val in enumerate(rmse_per_dim, start=1):
+                    id = gas.species_names[dim_idx - 3]
+                    print(f"  Species {id}: {rmse_val:.6e}")
+                print()
+
+            # elif error == "MAE":
+            #     pass
+        
+    return results
