@@ -14,7 +14,7 @@ To install DFODE-kit, clone the repository and install the dependencies:
 
 ```bash
 git clone https://github.com/DeepFlame-ML/DFODE-kit.git
-cd DFODE
+cd DFODE-kit
 pip install -e .
 ```
 

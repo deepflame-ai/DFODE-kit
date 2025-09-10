@@ -21,7 +21,7 @@ model_settings = {
     'mech': f"{DFODE_ROOT}/mechanisms/Burke2012_s9r23.yaml"
 }
 
-file_path = f"{DFODE_ROOT}/model_test/priori/tutorial_data.h5"
+file_path = f"{DFODE_ROOT}/tutorials/oneD_freely_propagating_flame/tutorial_data.h5"
 save_path1 = f"{DFODE_ROOT}/model_test/priori/label.h5"
 save_path2 = f"{DFODE_ROOT}/model_test/priori/model_output.h5"
 integrate_h5(file_path, save_path1, save_path2, 1e-6, nn_integration=True, model_settings=model_settings)

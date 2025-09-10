@@ -103,7 +103,7 @@ def random_perturb(
         print(num)
 
     new_array = np.array(new_array)
-    new_array = new_array[np.random.choice(new_array.shape[0], size=10000)]
+    new_array = new_array[np.random.choice(new_array.shape[0], size=dataset)]
 
     print(new_array.shape)
     return new_array
