@@ -13,7 +13,7 @@ DFODE-kit is an open-source Python package designed to accelerate combustion sim
 To install DFODE-kit, clone the repository and install the dependencies:
 
 ```bash
-git clone https://github.com/DeepFlame-ML/DFODE-kit.git
+git clone https://github.com/deepflame-ai/DFODE-kit.git
 cd DFODE-kit
 pip install -e .
 ```
@@ -32,7 +32,7 @@ dfode-kit CMD ARGS
 - `label`: Generate supervised learning labels using Cantera's CVODE solver.
 - `train`: Train neural network models based on the specified datasets and parameters.
 
-A comprehensive tutorial guide of [tutorial](https://github.com/DeepFlame-ML/DFODE-kit/blob/main/tutorials/oneD_freely_propagating_flame/readme.md) is provided to help you get started quickly. Besides, the Jupyter Notebook version [notebook](https://github.com/DeepFlame-ML/DFODE-kit/blob/main/tutorials/oneD_freely_propagating_flame/dfode_kit_tutorial.ipynb) is provided here.
+A comprehensive tutorial guide of [tutorial](https://github.com/deepflame-ai/DFODE-kit/blob/main/tutorials/oneD_freely_propagating_flame/readme.md) is provided to help you get started quickly. Besides, the Jupyter Notebook version [notebook](https://github.com/deepflame-ai/DFODE-kit/blob/main/tutorials/oneD_freely_propagating_flame/dfode_kit_tutorial.ipynb) is provided here.
 
 
 ## Directories
