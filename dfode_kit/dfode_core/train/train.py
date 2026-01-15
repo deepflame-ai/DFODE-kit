@@ -50,29 +50,41 @@ def train(
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-    # Model instantiation
-    demo_model = MLP([2+n_species, 400, 400, 400, 400, n_species-1]).to(device)
+    # Model instantiation (Force Double Precision)
+    demo_model = MLP([2+n_species, 400, 400, 400, 400, n_species-1]).double().to(device)
 
     # Data loading
     thermochem_states1 = labeled_data[:, 0:2+n_species]
     thermochem_states2 = labeled_data[:, 2+n_species:]
 
     print(thermochem_states1.shape, thermochem_states2.shape)
-    thermochem_states1[:, 2:] = np.clip(thermochem_states1[:, 2:], 0, 1)
-    thermochem_states2[:, 2:] = np.clip(thermochem_states2[:, 2:], 0, 1)
+    
+    # Align with reference: Use np.abs to ensure non-negativity for all inputs
+    thermochem_states1 = np.abs(thermochem_states1)
+    thermochem_states2 = np.abs(thermochem_states2)
 
-    features = torch.tensor(BCT(thermochem_states1), dtype=torch.float32).to(device)
-    labels = torch.tensor(BCT(thermochem_states2[:, 2:-1]) - BCT(thermochem_states1[:, 2:-1]), dtype=torch.float32).to(device)
+    # Apply BCT only to species (columns 2 onwards), keep T/P unchanged
+    states_bct = thermochem_states1.copy()
+    states_bct[:, 2:] = BCT(states_bct[:, 2:])
+    # Use float64 (Double) to match DeepFlame inference
+    features = torch.tensor(states_bct, dtype=torch.float64).to(device)
+    
+    # Labels: Delta of BCT-transformed species
+    labels = torch.tensor(BCT(thermochem_states2[:, 2:-1]) - BCT(thermochem_states1[:, 2:-1]), dtype=torch.float64).to(device)
 
     features_mean = torch.mean(features, dim=0)
     features_std = torch.std(features, dim=0)
+    # Prevent division by zero
+    features_std[features_std == 0] = 1.0
     features = (features - features_mean) / features_std
 
     labels_mean = torch.mean(labels, dim=0)
     labels_std = torch.std(labels, dim=0)
+    # Prevent division by zero
+    labels_std[labels_std == 0] = 1.0
     labels = (labels - labels_mean) / labels_std
 
-    formation_enthalpies = torch.tensor(formation_enthalpies, dtype=torch.float32).to(device)
+    formation_enthalpies = torch.tensor(formation_enthalpies, dtype=torch.float64).to(device)
 
     # Training
     loss_fn = torch.nn.L1Loss()
@@ -91,6 +103,7 @@ def train(
                 param_group['lr'] *= 0.1
         
         # 初始化损失值
+        total_loss = 0
         total_loss1 = 0
         total_loss2 = 0
         total_loss3 = 0
@@ -130,7 +143,7 @@ def train(
         total_loss3 /= (len(features) / batch_size)
         total_loss /= (len(features) / batch_size)
 
-        print("Epoch: {}, Loss1: {:4e}, Loss2: {:4e}, Loss3: {:4e}, Loss: {:4e}".format(epoch+1, total_loss1.item(), total_loss2.item(), total_loss3.item(), total_loss.item()))
+        print("Epoch: {}, Loss1: {:4e}, Loss2: {:4e}, Loss3: {:4e}, Loss: {:4e}".format(epoch+1, total_loss1, total_loss2, total_loss3, total_loss))
 
     torch.save(
         {

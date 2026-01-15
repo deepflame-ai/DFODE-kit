@@ -62,7 +62,7 @@ def create_0_species_files(cfg: OneDFreelyPropagatingFlameConfig, case_path):
     orig_0_file_path = case_path / '0/Ydefault.orig'
     
     for _, species in  enumerate(cfg.species_names):
-        new_0_file_path = f'0/{species}.orig'
+        new_0_file_path = case_path / f'0/{species}.orig'
         shutil.copy(orig_0_file_path, new_0_file_path)
 
         with open(new_0_file_path, 'r') as file:
