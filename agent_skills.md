@@ -9,20 +9,21 @@ You are an expert in Combustion CFD and Deep Learning, specifically operating th
 2.  **Select** the most appropriate Canonical Sampling Case.
 3.  **Configure** the sampling parameters.
 4.  **Execute** the **MANDATORY** full pipeline: Setup -> Run -> Sample -> **Augment** -> **Label** -> **Train**.
-5.  **Interactive Check:** After training, **STOP** and ask the user if they want to proceed with **Validation (Priori/Posteriori)**.
+5.  **Validation:** Automatically perform **Posteriori Validation** using the generated model.
 
 ---
 
 ## 0. Critical Rules (Must Follow)
 1.  **Environment:** Prefix ALL commands with `conda run -n dfode_env --no-capture-output ...`
-2.  **Protect Templates:** NEVER run simulations inside `canonical_cases/`. ALWAYS create a new workspace.
-3.  **Strict Pipeline Integrity:** 
+2.  **Protect Templates:** NEVER run simulations inside `canonical_cases/` or `posteriori_cases/`. ALWAYS create a new workspace.
+3.  **NO Root Pollution:** NEVER create logs, scripts (`.py`), or output files in the project root.
+    *   ALWAYS use `agent.init_task(task_name)` to create a timestamped, isolated workspace.
+4.  **Strict Pipeline Integrity:** 
     *   **Augmentation is MANDATORY:** You must use `augment_data`.
     *   **Labeling is MANDATORY:** You must use `label_data`.
-4.  **Robust Execution:** The `run_simulation` command automatically handles parallel hangs by switching to serial execution.
-5.  **Interactive Validation:** DO NOT automatically run validation. Present the results of training and ask the user to choose:
-    *   Option 1: Priori Testing (Statistical Analysis)
-    *   Option 2: Posteriori Testing (Coupled CFD Run)
+    *   **Posteriori is MANDATORY:** You must use `run_posteriori_test` after training.
+5.  **Robust Execution:** 
+    *   Initialize the agent with correct environment paths if the user is not 'skylark': `agent = DFODEAgentInterface(deepflame_source="/path/to/bashrc", openfoam_source="/path/to/bashrc")`.
 
 ---
 
@@ -35,118 +36,82 @@ You are an expert in Combustion CFD and Deep Learning, specifically operating th
 
 ---
 
-## 2. Execution Workflow (Python API) - Part 1: Training
+## 2. Execution Workflow (Python API)
 
-**Scenario:** User says *"I need a model for Hydrogen-Air at 1 atm, stoichiometric."*
+### Part 1: Training Pipeline
+
+**Scenario:** User says *"I need a model for Methane-Air at 1 atm, stoichiometric."*
 
 **Agent Action:**
 1.  Identify: `oneD_freely_propagating_flame`.
-2.  Extract: Fuel=H2, Ox=Air, Phi=1.0, P=1atm.
-3.  Write Script (`train_task.py`):
+2.  Generate Script (`run_workflow.py`):
 
 ```python
 from dfode_kit.agent_interface import DFODEAgentInterface
 import os
 
-# 1. Initialize
-agent = DFODEAgentInterface()
+# 1. Initialize (ADJUST PATHS FOR CURRENT USER)
+agent = DFODEAgentInterface(
+    deepflame_source="/home/zhz/deepflame-dev/bashrc", 
+    openfoam_source="/opt/openfoam7/etc/bashrc"
+)
 
-# 2. Configure
+# 2. Config
+work_dir = os.path.abspath("runs/TaskName")
+template = "oneD_freely_propagating_flame"
 config = {
-    "mechanism": "mechanisms/Burke2012_s9r23.yaml",
-    "T0": 300,
-    "p0": 101325,
-    "fuel": "H2:1",
-    "oxidizer": "O2:0.21,N2:0.79",
-    "eq_ratio": 1.0,
-    "sim_time_step": 1e-6,
-    "sim_write_interval": 1e-5,
-    "num_output_steps": 20
+    "mechanism": "mechanisms/drm19.yaml",
+    "T0": 300, "p0": 101325, "eq_ratio": 1.0,
+    "fuel": "CH4:1", "oxidizer": "O2:0.21,N2:0.79",
+    "sim_time_step": 1e-6, "sim_write_interval": 1e-5
 }
 
-work_dir = "runs/H2_1atm_phi1.0"
-template = "oneD_freely_propagating_flame"
-mech_path = config["mechanism"]
-
-# 3. Setup & Run
-print("--- Step 1: Simulation ---")
+# 3. Setup & Run Simulation
+# NOTE: The simulation case is created inside a subdirectory '{work_dir}/simulation_case'
 agent.create_workspace(work_dir, template_name=template)
-agent.setup_simulation(work_dir, config_dict=config, template_name=template)
-agent.run_simulation(work_dir, timeout=600)
+sim_dir = os.path.join(work_dir, "simulation_case")
+agent.setup_simulation(sim_dir, config_dict=config, template_name=template)
+agent.run_simulation(sim_dir, timeout=1200)
 
-# 4. Sample Data
-print("--- Step 2: Sampling ---")
+# 4. Data Processing
 h5_path = f"{work_dir}/data_raw.h5"
-agent.sample_data(work_dir, mech_path, output_h5=h5_path)
+agent.sample_data(sim_dir, config["mechanism"], output_h5=h5_path)
 
-# 5. Augment Data
-print("--- Step 3: Augmentation ---")
-npy_aug_path = f"{work_dir}/data_augmented.npy"
-agent.augment_data(
-    input_h5=h5_path,
-    mech_path=mech_path,
-    output_npy=npy_aug_path,
-    dataset_num=20000,
-    perturb_factor=0.05,
-    eq_ratio=config["eq_ratio"]
-)
+npy_aug = f"{work_dir}/data_augmented.npy"
+# element_limit=True will automatically detect H/O ratio from data
+agent.augment_data(h5_path, config["mechanism"], npy_aug, dataset_num=100000)
 
-# 6. Label Data
-print("--- Step 4: Labeling ---")
-npy_labeled_path = f"{work_dir}/data_labeled.npy"
-agent.label_data(
-    input_npy=npy_aug_path,
-    mech_path=mech_path,
-    output_npy=npy_labeled_path,
-    time_step=1e-7
-)
+npy_lab = f"{work_dir}/data_labeled.npy"
+agent.label_data(npy_aug, config["mechanism"], npy_lab, time_step=1e-7)
 
-# 7. Train Model
-print("--- Step 5: Training ---")
-model_output = os.path.abspath(f"models/H2_model.pt")
-agent.train_model(
-    input_npy=npy_labeled_path,
-    mech_path=mech_path,
-    output_path=model_output
-)
-
-print(f"Training Complete. Model saved at {model_output}")
+# 5. Train
+model_path = f"{work_dir}/model.pt"
+agent.train_model(npy_lab, config["mechanism"], model_path)
 ```
 
-**STOP HERE.** Ask the user for the next step.
+### Part 2: Posteriori Validation (CFD Test)
 
-## 3. Execution Workflow - Part 2: Validation (If requested)
+**Goal:** Verify the trained model in an actual OpenFOAM simulation.
 
-If user selects **Posteriori Testing**, write `validate_task.py`:
+**Strategy:** Do NOT manually configure the posteriori case. Reuse the physics from the sampling simulation.
+
+**Agent Action:**
+Append this to the script:
 
 ```python
-from dfode_kit.agent_interface import DFODEAgentInterface
-import os
-
-agent = DFODEAgentInterface()
-
-# Re-define config or load from file if needed
-config = { ... } # Same as training
-template = "oneD_freely_propagating_flame"
-model_output = os.path.abspath("models/H2_model.pt")
-
-# 8. Posteriori Validation
-print("--- Step 6: Posteriori Validation ---")
-valid_dir = "runs/H2_1atm_phi1.0_Posteriori"
-agent.setup_posteriori_validation(
-    workspace_path=valid_dir,
-    config_dict=config,
-    model_path=model_output,
-    template_name=template
-)
-print(f"Running validation case in {valid_dir}...")
-agent.run_simulation(valid_dir, timeout=600)
-
-print("Validation Complete.")
+# 6. Posteriori Validation
+print("--- Step 7: Posteriori Validation ---")
+# This function automatically:
+# 1. Clones '{work_dir}/simulation_case' to '{work_dir}/posteriori_test'
+# 2. Syncs simTimeStep with inferenceDeltaTime in config
+# 3. Copies inference.py and model.pt
+# 4. Sets Torch=on, GPU=on, Cores=4
+# 5. Runs blockMesh -> decomposePar -> mpirun (parallel)
+agent.run_posteriori_test(work_dir, model_path)
 ```
 
-## 4. Troubleshooting Guide
+## 3. Troubleshooting Guide
 
-*   **"Safety Error"**: Do not use `canonical_cases/`.
-*   **"Simulation failed"**: Check `log.mpirun` in the **task directory**.
-*   **"Inference Error"**: If validation fails, ensure `model_path` is absolute.
+*   **"CanteraMechanismFile undefined"**: Ensure the mechanism file is copied to the case ROOT, not just `constant/`. `run_posteriori_test` handles this.
+*   **"bad size -1" in OpenFOAM**: Usually a mismatch between `coresPerNode` in `sampleConfigDict` and the actual MPI run arguments. Use `run_posteriori_test` which forces `coresPerNode=4` and runs with `-np 4`.
+*   **"simTimeStep mismatch"**: The `simTimeStep` in `controlDict` must match `inferenceDeltaTime` in `sampleConfigDict` for Neural ODEs.

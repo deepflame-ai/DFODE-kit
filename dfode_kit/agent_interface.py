@@ -759,7 +759,7 @@ class DFODEAgentInterface:
                         elif "GPU" in line:
                             f.write("    GPU               off;\n") # Force GPU off for stability
                         elif "coresPerNode" in line:
-                            f.write("    coresPerNode      1;\n") # Disable multi-core GPU binding logic
+                            f.write("    coresPerNode      4;\n") # Disable multi-core GPU binding logic
                         else:
                             f.write(line)
                     elif "loadbalancing" in line:
@@ -803,5 +803,124 @@ class DFODEAgentInterface:
         Kept for compatibility but 'run_priori_test' is preferred for the agent workflow.
         """
         # ... (Implementation kept as is or wrapped) ...
-        # For brevity in this update, assuming the user wants the new specific methods.
         pass
+
+    def run_posteriori_test(self, work_dir: str, model_path: str, template_name: str = None):
+        """
+        Runs posteriori validation by reusing the sampling simulation case.
+        
+        Workflow:
+        1. Copy {work_dir}/simulation_case to {work_dir}/posteriori_test.
+        2. Update system/sampleConfigDict: set simTimeStep = inferenceDeltaTime.
+        3. Copy dfode_kit/df_interface/inference.py to {work_dir}/posteriori_test.
+        4. Copy trained model to {work_dir}/posteriori_test/model.pt.
+        5. Run: blockMesh && decomposePar && mpirun -np 4 dfLowMachFoam -parallel
+        
+        Args:
+            work_dir: The task directory.
+            model_path: Path to the trained .pt model.
+            template_name: Ignored in this workflow (kept for API compatibility).
+        """
+        work_dir = Path(work_dir)
+        sim_src = work_dir / "simulation_case"
+        case_dst = work_dir / "posteriori_test"
+        
+        if not sim_src.exists():
+            # Fallback if sim_src is not found
+            logger.warning(f"Simulation case not found at {sim_src}. Checking root...")
+            if (work_dir / "system").exists():
+                sim_src = work_dir
+            else:
+                raise FileNotFoundError(f"No valid simulation case found in {work_dir}")
+
+        # 1. Clone Case (Copy 0, constant, system, Allrun, Allclean)
+        if case_dst.exists():
+            shutil.rmtree(case_dst)
+        case_dst.mkdir(parents=True)
+        
+        for item in ["0", "constant", "system", "Allrun", "Allclean"]:
+            src_item = sim_src / item
+            if src_item.exists():
+                if src_item.is_dir():
+                    shutil.copytree(src_item, case_dst / item)
+                else:
+                    shutil.copy(src_item, case_dst / item)
+        
+        logger.info(f"Created posteriori case at {case_dst} from {sim_src}")
+        
+        # 2. Update simTimeStep in system/sampleConfigDict
+        config_path = case_dst / "system" / "sampleConfigDict"
+        import re
+        if config_path.exists():
+            with open(config_path, "r") as f:
+                content = f.read()
+            
+            # Extract inferenceDeltaTime (assuming it's defined like 'inferenceDeltaTime_ 1e-6;')
+            match = re.search(r'inferenceDeltaTime_\s+([0-9\.eE\-]+);', content)
+            if match:
+                dt_val = match.group(1)
+                logger.info(f"Syncing simTimeStep to inferenceDeltaTime: {dt_val}")
+                # Replace simTimeStep
+                content = re.sub(r'simTimeStep\s+([0-9\.eE\-]+);', f'simTimeStep             {dt_val};', content)
+                
+                # Also ensure torch is on and GPU is on
+                content = content.replace("torch_                  off;", "torch_                  on;")
+                content = content.replace("GPU_                    off;", "GPU_                    on;")
+                content = content.replace('torchModel_             "DNN_model.pt";', 'torchModel_             "model.pt";')
+                # Update coresPerNode if present (assuming default 16 in template)
+                content = re.sub(r'coresPerNode_\s+\d+;', 'coresPerNode_           4;', content)
+                
+                with open(config_path, "w") as f:
+                    f.write(content)
+            else:
+                logger.warning("Could not find inferenceDeltaTime_ in sampleConfigDict.")
+        
+        # 3. Copy Inference Script
+        inference_src = Path(self.dfode_root) / "dfode_kit" / "df_interface" / "inference.py"
+        if inference_src.exists():
+            shutil.copy(inference_src, case_dst / "inference.py")
+        else:
+            logger.error(f"Inference script not found at {inference_src}")
+            
+        # 4. Copy Model
+        shutil.copy(model_path, case_dst / "model.pt")
+        
+        # 5. Execute Simulation
+        logger.info("Running posteriori simulation...")
+        
+        # Ensure clean start
+        clean_cmd = (
+            f"cd {case_dst} && "
+            f"rm -rf processor* && "
+            f"rm -rf postProcessing && "
+            f"rm -rf log.*"
+        )
+        subprocess.run(["/bin/bash", "-c", clean_cmd])
+
+        # Update decomposeParDict for np 4
+        decomp_path = case_dst / "system" / "decomposeParDict"
+        if decomp_path.exists():
+            with open(decomp_path, "r") as f:
+                d_content = f.read()
+            d_content = re.sub(r'numberOfSubdomains\s+\d+;', 'numberOfSubdomains 4;', d_content)
+            with open(decomp_path, "w") as f:
+                f.write(d_content)
+
+        run_cmds = (
+            f"source {self.openfoam_source} && "
+            f"source {self.deepflame_source} && "
+            f"cd {case_dst} && "
+            f"blockMesh > log.blockMesh 2>&1 && "
+            f"decomposePar > log.decomposePar 2>&1 && "
+            f"mpirun -np 4 dfLowMachFoam -parallel > log.mpirun 2>&1"
+        )
+        
+        full_command = ["conda", "run", "-n", self.conda_env, "--no-capture-output", "/bin/bash", "-c", run_cmds]
+        
+        try:
+            logger.info(f"Executing: {run_cmds}")
+            subprocess.run(full_command, check=True)
+            logger.info("Posteriori simulation completed successfully.")
+        except subprocess.CalledProcessError:
+            logger.error("Posteriori simulation failed. Check logs in posteriori_test directory.")
+            raise

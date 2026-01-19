@@ -50,8 +50,8 @@ def train(
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-    # Model instantiation (Force Double Precision)
-    demo_model = MLP([2+n_species, 400, 400, 400, 400, n_species-1]).double().to(device)
+    # Model instantiation (Use Float Precision for Speed)
+    demo_model = MLP([2+n_species, 400, 400, 400, 400, n_species-1]).float().to(device)
 
     # Data loading
     thermochem_states1 = labeled_data[:, 0:2+n_species]
@@ -66,11 +66,11 @@ def train(
     # Apply BCT only to species (columns 2 onwards), keep T/P unchanged
     states_bct = thermochem_states1.copy()
     states_bct[:, 2:] = BCT(states_bct[:, 2:])
-    # Use float64 (Double) to match DeepFlame inference
-    features = torch.tensor(states_bct, dtype=torch.float64).to(device)
+    # Use float32 for training speed
+    features = torch.tensor(states_bct, dtype=torch.float32).to(device)
     
     # Labels: Delta of BCT-transformed species
-    labels = torch.tensor(BCT(thermochem_states2[:, 2:-1]) - BCT(thermochem_states1[:, 2:-1]), dtype=torch.float64).to(device)
+    labels = torch.tensor(BCT(thermochem_states2[:, 2:-1]) - BCT(thermochem_states1[:, 2:-1]), dtype=torch.float32).to(device)
 
     features_mean = torch.mean(features, dim=0)
     features_std = torch.std(features, dim=0)
@@ -84,7 +84,11 @@ def train(
     labels_std[labels_std == 0] = 1.0
     labels = (labels - labels_mean) / labels_std
 
-    formation_enthalpies = torch.tensor(formation_enthalpies, dtype=torch.float64).to(device)
+    formation_enthalpies = torch.tensor(formation_enthalpies, dtype=torch.float32).to(device)
+
+    # Pre-slice constants for optimization
+    f_std_species = features_std[2:-1]
+    f_mean_species = features_mean[2:-1]
 
     # Training
     loss_fn = torch.nn.L1Loss()
@@ -118,9 +122,28 @@ def train(
             preds = demo_model(batch_features)
             loss1 = loss_fn(preds, batch_labels)  
 
-            Y_in = ((batch_features[:, 2:-1] * features_std[2:-1] + features_mean[2:-1]) * 0.1 + 1) ** 10
-            Y_out = (((preds * labels_std + labels_mean) + (batch_features[:, 2:-1] * features_std[2:-1] + features_mean[2:-1])) * 0.1 + 1) ** 10
-            Y_target = (((batch_labels * labels_std + labels_mean) + (batch_features[:, 2:-1] * features_std[2:-1] + features_mean[2:-1])) * 0.1 + 1) ** 10
+            # Optimization: Extract common sub-expression (Input species in physical space after Inverse BCT base calc)
+            # Formula: ((NormInput * Std + Mean) * lambda + 1) ** (1/lambda)
+            # Here lambda=0.1, so power is 10.
+            
+            # 1. De-normalize input species part
+            input_species_part = batch_features[:, 2:-1] * f_std_species + f_mean_species
+            
+            # 2. Calculate common base term for Inverse BCT
+            base_term_in = input_species_part * 0.1 + 1
+            
+            # 3. Y_in (Physical Species Input)
+            Y_in = base_term_in ** 10
+            
+            # 4. Y_out (Predicted Physical Species)
+            # Preds are delta. So Y_out_bct = Pred_unnorm + Input_bct
+            # Y_out = (Y_out_bct * 0.1 + 1) ** 10
+            preds_unnorm = preds * labels_std + labels_mean
+            Y_out = ((preds_unnorm + input_species_part) * 0.1 + 1) ** 10
+            
+            # 5. Y_target (Target Physical Species for consistency check)
+            labels_unnorm = batch_labels * labels_std + labels_mean
+            Y_target = ((labels_unnorm + input_species_part) * 0.1 + 1) ** 10
 
             loss2 = loss_fn(Y_out.sum(axis=1), Y_in.sum(axis=1))
 

@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "dfode"
 version = "0.1"
 dependencies = [
-    "numpy",
+    "numpy==1.26.4",
     "cantera<3.1",
     "h5py",
     "matplotlib",
