@@ -10,7 +10,7 @@
 在终端中执行以下命令（仅需执行一次）：
 
 ```bash
-conda run -n dfode_env pip install -e /mnt/d/df-data/project/DFODE-kit
+conda run -n dfode_env pip install -e .
 ```
 
 ## 2. 启动与初始化 (Initialization)
@@ -31,6 +31,9 @@ conda run -n dfode_env pip install -e /mnt/d/df-data/project/DFODE-kit
 ## 3. 任务下达规范 (Task Instruction)
 
 用户无需指定具体的 CLI 命令或编写脚本。请直接描述**目标物理工况**和**应用需求**，Agent 将自动将其转化为技术参数。
+    *   **任务示例**：
+        > “我现在需要训练一个用于二维预混HIT火焰模拟的模型，燃料为CH4，氧化剂为Air，当量比1.0，压力1atm，预混气温度300K，化学反应机理使用drm19机理。模拟步长1e-06，写出间隔1e-05，共写出10个结果。”
+        > “我现在需要训练一个用于二维预混HIT火焰模拟的模型，燃料为H2，氧化剂为Air，当量比0.8，压力1atm，预混气温度300K，化学反应机理使用Burke机理。模拟步长1e-06，写出间隔1e-05，共写出10个结果。”
 
 ### 推荐指令结构
 指令应包含以下核心要素：

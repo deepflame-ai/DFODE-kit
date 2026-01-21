@@ -12,6 +12,7 @@ def train(
     source_file: str,
     output_path: str,
     time_step: float = 1e-6,
+    log_file: str = None,
 ) -> np.ndarray:
     
     """
@@ -166,7 +167,20 @@ def train(
         total_loss3 /= (len(features) / batch_size)
         total_loss /= (len(features) / batch_size)
 
-        print("Epoch: {}, Loss1: {:4e}, Loss2: {:4e}, Loss3: {:4e}, Loss: {:4e}".format(epoch+1, total_loss1, total_loss2, total_loss3, total_loss))
+        # CSV format: Epoch, Loss1, Loss2, Loss3, TotalLoss
+        log_message = "{}, {:.6e}, {:.6e}, {:.6e}, {:.6e}".format(
+            epoch+1, total_loss1, total_loss2, total_loss3, total_loss)
+        
+        # Print legacy format for console readability (Agent execution log)
+        # But write CSV format to file
+        print(f"Epoch: {epoch+1}, Loss1: {total_loss1:.4e}, Loss: {total_loss:.4e}")
+
+        if log_file:
+            with open(log_file, 'a') as f:
+                # Write header if file is empty
+                if f.tell() == 0:
+                    f.write("Epoch,Loss1,Loss2,Loss3,TotalLoss\n")
+                f.write(log_message + "\n")
 
     torch.save(
         {

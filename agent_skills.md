@@ -16,14 +16,21 @@ You are an expert in Combustion CFD and Deep Learning, specifically operating th
 ## 0. Critical Rules (Must Follow)
 1.  **Environment:** Prefix ALL commands with `conda run -n dfode_env --no-capture-output ...`
 2.  **Protect Templates:** NEVER run simulations inside `canonical_cases/` or `posteriori_cases/`. ALWAYS create a new workspace.
-3.  **NO Root Pollution:** NEVER create logs, scripts (`.py`), or output files in the project root.
-    *   ALWAYS use `agent.init_task(task_name)` to create a timestamped, isolated workspace.
-4.  **Strict Pipeline Integrity:** 
+3.  **Strict Isolation & Naming:**
+    *   **Naming Convention:** Task directories MUST be generated dynamically using the current system time.
+    *   **Format:** `runs/{YYYYMMDD_HHMMSS}_{Fuel}_{Oxidizer}_{Phi}_{P}_{T}`.
+    *   **Prohibition:** NEVER use static or hardcoded timestamps like `000000` or `123456`. You MUST use `$(date +%Y%m%d_%H%M%S)` in Bash or `datetime.now().strftime('%Y%m%d_%H%M%S')` in Python to generate the folder name.
+    *   **Self-Containment:** ALL generated files (scripts like `run_task.py`, logs like `execution.log`, data, models) MUST reside *inside* this specific task directory.
+    *   **Cleanability:** Deleting the task directory must remove 100% of the task's footprint. NEVER write scripts to `runs/` root or project root.
+4.  **Logging:** The generated Python script MUST configure `logging` to write to `sys.stdout` inside the task directory.
+5.  **Strict Pipeline Integrity:** 
     *   **Augmentation is MANDATORY:** You must use `augment_data`.
     *   **Labeling is MANDATORY:** You must use `label_data`.
+    *   **Splitting is MANDATORY:** You must use `split_data` to create a hold-out test set.
+    *   **Priori Validation is MANDATORY:** You must use `run_priori_test` to verify RMSE on the test set.
     *   **Posteriori is MANDATORY:** You must use `run_posteriori_test` after training.
-5.  **Robust Execution:** 
-    *   Initialize the agent with correct environment paths if the user is not 'skylark': `agent = DFODEAgentInterface(deepflame_source="/path/to/bashrc", openfoam_source="/path/to/bashrc")`.
+6.  **Robust Execution:** 
+    *   Initialize the agent with correct environment paths: `agent = DFODEAgentInterface(deepflame_source="/path/to/bashrc", openfoam_source="/path/to/bashrc")`.
 
 ---
 
@@ -49,6 +56,25 @@ You are an expert in Combustion CFD and Deep Learning, specifically operating th
 ```python
 from dfode_kit.agent_interface import DFODEAgentInterface
 import os
+import sys
+import logging
+
+# 0. Setup Task Context & Logging
+# This script MUST be saved as: runs/<Timestamp_Name>/run_task.py
+work_dir = os.path.dirname(os.path.abspath(__file__))
+log_file = os.path.join(work_dir, "execution.log")
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler(log_file),
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+logger = logging.getLogger(__name__)
+
+logger.info(f"Starting task in: {work_dir}")
 
 # 1. Initialize (ADJUST PATHS FOR CURRENT USER)
 agent = DFODEAgentInterface(
@@ -57,7 +83,6 @@ agent = DFODEAgentInterface(
 )
 
 # 2. Config
-work_dir = os.path.abspath("runs/TaskName")
 template = "oneD_freely_propagating_flame"
 config = {
     "mechanism": "mechanisms/drm19.yaml",
@@ -67,13 +92,16 @@ config = {
 }
 
 # 3. Setup & Run Simulation
-# NOTE: The simulation case is created inside a subdirectory '{work_dir}/simulation_case'
-agent.create_workspace(work_dir, template_name=template)
-sim_dir = os.path.join(work_dir, "simulation_case")
+logger.info("Step 3: Setup & Run Simulation")
+# CRITICAL: Always create the simulation in a 'simulation_case' subdirectory.
+sim_dir = os.path.join(work_dir, "simulation_case") 
+agent.create_workspace(sim_dir, template_name=template)
+
 agent.setup_simulation(sim_dir, config_dict=config, template_name=template)
 agent.run_simulation(sim_dir, timeout=1200)
 
 # 4. Data Processing
+logger.info("Step 4: Data Processing")
 h5_path = f"{work_dir}/data_raw.h5"
 agent.sample_data(sim_dir, config["mechanism"], output_h5=h5_path)
 
@@ -85,33 +113,32 @@ npy_lab = f"{work_dir}/data_labeled.npy"
 agent.label_data(npy_aug, config["mechanism"], npy_lab, time_step=1e-7)
 
 # 5. Train
+logger.info("Step 5: Training")
 model_path = f"{work_dir}/model.pt"
-agent.train_model(npy_lab, config["mechanism"], model_path)
-```
 
-### Part 2: Posteriori Validation (CFD Test)
+# 5.1 Split Data (MANDATORY)
+# Split labeled data into Training Set (80%) and Unseen Test Set (20%)
+train_npy, test_npy = agent.split_data(npy_lab, train_ratio=0.8)
 
-**Goal:** Verify the trained model in an actual OpenFOAM simulation.
+# 5.2 Train Model
+# CRITICAL: Train ONLY on the training split to prevent data leakage.
+agent.train_model(train_npy, config["mechanism"], model_path)
 
-**Strategy:** Do NOT manually configure the posteriori case. Reuse the physics from the sampling simulation.
+# 5.3 Priori Validation (Offline Test)
+# Check model accuracy (RMSE) on the unseen test set before running CFD.
+agent.run_priori_test(model_path, test_npy, config["mechanism"])
 
-**Agent Action:**
-Append this to the script:
-
-```python
 # 6. Posteriori Validation
-print("--- Step 7: Posteriori Validation ---")
+logger.info("Step 6: Posteriori Validation")
 # This function automatically:
 # 1. Clones '{work_dir}/simulation_case' to '{work_dir}/posteriori_test'
 # 2. Syncs simTimeStep with inferenceDeltaTime in config
-# 3. Copies inference.py and model.pt
-# 4. Sets Torch=on, GPU=on, Cores=4
-# 5. Runs blockMesh -> decomposePar -> mpirun (parallel)
+# 3. Runs blockMesh -> decomposePar -> mpirun (parallel)
 agent.run_posteriori_test(work_dir, model_path)
 ```
 
 ## 3. Troubleshooting Guide
 
-*   **"CanteraMechanismFile undefined"**: Ensure the mechanism file is copied to the case ROOT, not just `constant/`. `run_posteriori_test` handles this.
+*   **"CanteraMechanismFile undefined"**: Ensure the mechanism file is copied to the case ROOT, not `constant/`. `run_posteriori_test` handles this.
 *   **"bad size -1" in OpenFOAM**: Usually a mismatch between `coresPerNode` in `sampleConfigDict` and the actual MPI run arguments. Use `run_posteriori_test` which forces `coresPerNode=4` and runs with `-np 4`.
 *   **"simTimeStep mismatch"**: The `simTimeStep` in `controlDict` must match `inferenceDeltaTime` in `sampleConfigDict` for Neural ODEs.

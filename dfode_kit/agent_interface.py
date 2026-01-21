@@ -16,6 +16,8 @@ from dfode_kit.data_operations.augment_data import random_perturb
 from dfode_kit.data_operations import label_npy
 from dfode_kit.dfode_core.train.train import train
 from dfode_kit.dfode_core.model.mlp import MLP
+from dfode_kit.post_processing.reporter import TaskReporter
+import re
 import cantera as ct
 
 # Configure root logger
@@ -29,7 +31,7 @@ class DFODEAgentInterface:
     """
 
     def __init__(self, dfode_root: Optional[str] = None, 
-                 deepflame_source: str = "/home/skylark/deepflame-dev/bashrc",
+                 deepflame_source: str = "/home/zhz/deepflame-dev/bashrc",
                  openfoam_source: str = "/opt/openfoam7/etc/bashrc",
                  conda_env: str = "dfode_env"):
         """
@@ -59,28 +61,54 @@ class DFODEAgentInterface:
         self.deepflame_source = deepflame_source
         self.openfoam_source = openfoam_source
         self.conda_env = conda_env
+        self.task_dir = None
 
         if not self.canonical_cases_dir.exists():
             logger.warning(f"Canonical cases directory not found at {self.canonical_cases_dir}. "
                            "Ensure DFODE_ROOT is set correctly.")
 
-    def configure_task_logger(self, workspace_path: str):
-        """Sets up file logging to the task workspace."""
-        workspace_path = Path(workspace_path)
-        log_file = workspace_path / "task.log"
+    @staticmethod
+    def generate_task_name(fuel: str, oxidizer: str, phi: float, p: float, t: float) -> str:
+        """
+        Generates a standardized task name with dynamic system time.
+        Format: YYYYMMDD_HHMMSS_{Fuel}_{Oxidizer}_{Phi}_{P}_{T}
+        """
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         
-        root_logger = logging.getLogger()
+        # Clean specific characters for path safety
+        def clean(s): return str(s).replace(":", "").replace(",", "_").replace(" ", "")
         
-        # Check if we already have a file handler for this path to avoid duplicates
-        for h in root_logger.handlers:
-            if isinstance(h, logging.FileHandler) and Path(h.baseFilename).resolve() == log_file.resolve():
-                return
+        name = f"{timestamp}_{clean(fuel)}_{clean(oxidizer)}_{phi}_{p}_{t}"
+        return name
 
-        file_handler = logging.FileHandler(log_file)
-        formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-        file_handler.setFormatter(formatter)
-        root_logger.addHandler(file_handler)
-        logger.info(f"Task logging initialized: {log_file}")
+    def set_task_dir(self, task_dir: str):
+        """Set the current task directory for logging."""
+        self.task_dir = Path(task_dir)
+
+    def _get_task_log_path(self) -> Optional[Path]:
+        """Get the path to the task training log file."""
+        if self.task_dir:
+            return self.task_dir / "task.log"
+        return None
+
+    def _write_task_log(self, message: str):
+        """Write a message to the task log file with timestamp."""
+        log_path = self._get_task_log_path()
+        if log_path:
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            try:
+                with open(log_path, 'a') as f:
+                    f.write(f"[{timestamp}] {message}\n")
+            except Exception:
+                pass
+
+    def configure_task_logger(self, workspace_path: str):
+        """
+        No-op for file logging to avoid creating generic 'task.log'.
+        Logging is now handled via console (stdout) and specific 'train.log'
+        created during training phase.
+        """
+        pass
 
     def create_workspace(self, workspace_path: str, template_name: str = "oneD_freely_propagating_flame") -> str:
         """
@@ -141,7 +169,8 @@ class DFODEAgentInterface:
         
         if template_name == "oneD_freely_propagating_flame":
             # Extract simulation settings if present
-            settings_keys = ['sim_time_step', 'sim_write_interval', 'num_output_steps']
+            # Added 'sim_time' to extraction list to avoid passing it to config __init__
+            settings_keys = ['sim_time_step', 'sim_write_interval', 'num_output_steps', 'sim_time']
             settings = {k: config_dict.pop(k) for k in settings_keys if k in config_dict}
             
             try:
@@ -150,6 +179,32 @@ class DFODEAgentInterface:
                     config.update_config(settings)
                 
                 setup_one_d_flame_case(config, str(workspace_path))
+                
+                # --- Force update simulation controls (Resilience against template mismatch) ---
+                # This ensures user parameters are applied even if the template placeholder mechanism fails
+                if settings:
+                    # Determine values from config object (which has defaults applied)
+                    sim_dt = config.sim_time_step
+                    sim_write = config.sim_write_interval
+                    sim_time = config.sim_time
+                    
+                    # Update sampleConfigDict
+                    scd_path = workspace_path / "system/sampleConfigDict"
+                    if scd_path.exists():
+                        with open(scd_path, 'r') as f:
+                            content = f.read()
+                        
+                        # Regex replacement for key parameters
+                        # Using re.sub to robustly replace existing values like "simTimeStep 1e-4;" or "simTimeStep 0.0001;"
+                        content = re.sub(r'simTimeStep\s+([0-9\.eE\-\+]+);', f'simTimeStep             {sim_dt};', content)
+                        content = re.sub(r'simWriteInterval\s+([0-9\.eE\-\+]+);', f'simWriteInterval      {sim_write};', content)
+                        content = re.sub(r'simTime\s+([0-9\.eE\-\+]+);', f'simTime               {sim_time};', content)
+                        
+                        with open(scd_path, 'w') as f:
+                            f.write(content)
+                        logger.info(f"Force updated sampleConfigDict with: dt={sim_dt}, write={sim_write}, time={sim_time}")
+                # ------------------------------------------------------------------------------------
+
                 logger.info("Simulation setup complete.")
             except Exception as e:
                 logger.error(f"Failed to setup simulation: {e}")
@@ -209,9 +264,60 @@ class DFODEAgentInterface:
             
         logger.warning(f"Timeout waiting for {log_file} completion marker. Proceeding with caution.")
 
+    def _check_simulation_status(self, workspace_path: Path) -> str:
+        """
+        Checks the status of the simulation based on logs.
+        Returns: 'Done', 'Running', 'Failed', or 'NotStarted'
+        """
+        reconstruct_log = workspace_path / "log.reconstructPar"
+        mpi_log = workspace_path / "log.mpirun"
+        
+        # Check for Completion (Robust tail check)
+        if reconstruct_log.exists():
+            try:
+                with open(reconstruct_log, 'rb') as f:
+                    try:
+                        f.seek(-2048, os.SEEK_END) # Check last 2KB
+                    except OSError:
+                        f.seek(0) # File is smaller than 2KB
+                    
+                    # Decode and check last lines
+                    tail_content = f.read().decode('utf-8', errors='ignore')
+                    lines = tail_content.splitlines()
+                    # Check the last 10 non-empty lines for the completion marker
+                    valid_lines = [l.strip() for l in lines if l.strip()]
+                    for line in valid_lines[-10:]:
+                        if line == "End" or "Finalising" in line:
+                            return 'Done'
+            except Exception:
+                pass
+                
+        # Check for Failure
+        if mpi_log.exists():
+            try:
+                with open(mpi_log, 'r') as f:
+                    content = f.read()
+                    if "FATAL ERROR" in content or "Aborted" in content:
+                        return 'Failed'
+            except Exception:
+                pass
+
+        # Check for Running (Simple heuristic: mpi log modified recently)
+        if mpi_log.exists():
+             import time
+             if time.time() - mpi_log.stat().st_mtime < 600: # Modified in last 10 mins
+                 return 'Running'
+                 
+        return 'NotStarted'
+
     def run_simulation(self, workspace_path: str, command: str = "./Allrun", timeout: Optional[int] = None):
         """
         Runs the simulation shell script in the workspace.
+        Resilient Mode:
+        - If simulation is already 'Done', returns immediately.
+        - If simulation is 'Running', monitors it.
+        - Uses start_new_session=True so the process survives script exit.
+        - If timeout is reached, detaches and returns (does NOT kill).
         """
         import time
         workspace_path = Path(workspace_path).resolve()
@@ -219,8 +325,17 @@ class DFODEAgentInterface:
         # Safety Check
         if self.canonical_cases_dir in workspace_path.parents or self.canonical_cases_dir == workspace_path:
             raise ValueError(f"Safety Error: Cannot run simulation inside template directory ({workspace_path}).")
+
+        # 1. Check Status
+        status = self._check_simulation_status(workspace_path)
+        if status == 'Done':
+            logger.info(f"Simulation in {workspace_path} is already complete. Skipping run.")
+            return
+        elif status == 'Failed':
+             logger.warning(f"Previous simulation in {workspace_path} failed. attempting restart/cleanup...")
+             # (Optional: Add cleanup logic here if needed, or rely on Allrun)
         
-        # 1. Prepare Parallel Command
+        # 2. Prepare Command
         inner_bash_command = (
             f"source {self.openfoam_source} && "
             f"source {self.deepflame_source} && "
@@ -235,14 +350,17 @@ class DFODEAgentInterface:
             "/bin/bash", "-c", inner_bash_command
         ]
         
-        logger.info(f"Running simulation in {workspace_path} using env '{self.conda_env}'...")
-        
+        # 3. Start or Monitor
+        logger.info(f"Running/Monitoring simulation in {workspace_path}...")
         start_time = time.time()
+        
+        # Use start_new_session=True to detach from parent (Agent) process group
         process = subprocess.Popen(
             full_command_list,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            text=True
+            text=True,
+            start_new_session=True 
         )
         
         force_fallback = False
@@ -250,37 +368,40 @@ class DFODEAgentInterface:
         
         try:
             while process.poll() is None:
-                time.sleep(2)
+                time.sleep(5)
                 elapsed = time.time() - start_time
                 
-                # Check for MPI Hang (Empty log file)
+                # Check for MPI Hang
                 if mpi_log_path.exists():
-                    if mpi_log_path.stat().st_size == 0 and elapsed > 15:
-                        logger.warning("MPI Hang Detected: log.mpirun is empty after 15s. Killing process...")
-                        process.kill()
+                    if mpi_log_path.stat().st_size == 0 and elapsed > 30:
+                        logger.warning("MPI Hang Detected: log.mpirun is empty after 30s. Killing...")
+                        os.killpg(os.getpgid(process.pid), 15) # Kill process group
                         force_fallback = True
                         break
                 
-                # Check Global Timeout
+                # Check Timeout (Soft Limit - Detach)
                 if timeout and elapsed > timeout:
-                    logger.error("Simulation timed out (Global). Killing...")
-                    process.kill()
-                    raise subprocess.TimeoutExpired(full_command_list, timeout)
+                    logger.warning(f"Simulation soft timeout ({timeout}s) reached. Detaching and leaving in background.")
+                    logger.warning("You can resume monitoring by calling this function again.")
+                    return # Exit function, leave process running
 
-            # Check exit code if not killed
-            if not force_fallback and process.returncode != 0:
+            # Check exit code if finished
+            if not force_fallback and process.returncode is not None and process.returncode != 0:
                 stdout, stderr = process.communicate()
                 logger.warning(f"Standard run failed (Exit {process.returncode}). Stderr: {stderr}")
+                # Check if it was actually a success but script returned weird?
+                # Check log.reconstructPar
+                if self._check_simulation_status(workspace_path) == 'Done':
+                    logger.info("Simulation actually finished successfully despite exit code.")
+                    return
                 force_fallback = True
                 
         except Exception as e:
             logger.error(f"Error monitoring simulation: {e}")
-            if process.poll() is None:
-                process.kill()
             raise
 
         if not force_fallback:
-            # 1.5 Wait for actual completion (reconstructPar log check)
+            # 1.5 Wait for actual completion
             self._wait_for_completion(workspace_path, "log.reconstructPar")
             logger.info("Simulation completed successfully (Parallel).")
             return
@@ -310,12 +431,12 @@ class DFODEAgentInterface:
             logger.error("Serial simulation timed out.")
             raise
 
-    def sample_data(self, workspace_path: str, mech_path: str, output_h5: str, include_mesh: bool = False):
+    def sample_data(self, workspace_path: str, mech_path: str, output_h5: str, include_mesh: bool = False, wait_timeout: int = 1200):
         """
         Samples data from the simulation results into an HDF5 file.
         
-        Includes a robust waiting mechanism to ensure the simulation and reconstruction
-        are fully complete before sampling starts.
+        Args:
+            wait_timeout: Max time (seconds) to wait for simulation to finish. Default 1200s (20 mins).
         """
         workspace_path = Path(workspace_path).resolve()
         
@@ -325,9 +446,14 @@ class DFODEAgentInterface:
         mpi_log = workspace_path / "log.mpirun"
         
         logger.info(f"Checking simulation completion status in {workspace_path}...")
+        start_wait = time.time()
         
         while True:
-            # 1. Check for Fatal Errors first to avoid infinite waiting
+            # 0. Check Timeout
+            if time.time() - start_wait > wait_timeout:
+                raise TimeoutError(f"Timed out waiting for simulation to complete in {workspace_path} after {wait_timeout}s.")
+
+            # 1. Check for Fatal Errors
             if mpi_log.exists():
                 with open(mpi_log, 'r') as f:
                     content = f.read()
@@ -344,7 +470,7 @@ class DFODEAgentInterface:
                             logger.info("Confirmed: log.reconstructPar finished successfully.")
                             break
                 except Exception:
-                    pass # File might be locked by OS
+                    pass 
             
             logger.info("Waiting for log.reconstructPar to finish (checking every 10s)...")
             time.sleep(10)
@@ -354,6 +480,23 @@ class DFODEAgentInterface:
         
         df_to_h5(str(workspace_path), mech_path, output_h5, include_mesh=include_mesh)
         touch_h5(output_h5)
+        
+        # Log sampling statistics
+        h5_path = Path(output_h5)
+        self._write_task_log("=" * 60)
+        self._write_task_log("DATA SAMPLING COMPLETE")
+        self._write_task_log("=" * 60)
+        self._write_task_log(f"Output file: {output_h5}")
+        
+        # Get data size
+        data = get_TPY_from_h5(output_h5)
+        sample_count = data.shape[0]
+        species_count = data.shape[1]
+        self._write_task_log(f"Total samples collected: {sample_count}")
+        self._write_task_log(f"Features per sample: {species_count}")
+        self._write_task_log(f"Average sample rate: {sample_count / 10:.0f} samples/second (estimated)")
+        
+        logger.info(f"Sampling complete. Total samples: {sample_count}")
         logger.info("Sampling complete.")
 
     def augment_data(self, input_h5: str, mech_path: str, output_npy: str, dataset_num: Optional[int] = None, 
@@ -413,6 +556,17 @@ class DFODEAgentInterface:
         
         # Save to NPY
         np.save(output_npy, augmented_data)
+        
+        # Log augmentation statistics
+        self._write_task_log("=" * 60)
+        self._write_task_log("DATA AUGMENTATION COMPLETE")
+        self._write_task_log("=" * 60)
+        self._write_task_log(f"Raw data samples: {raw_size}")
+        self._write_task_log(f"Augmented data samples: {augmented_data.shape[0]}")
+        self._write_task_log(f"Perturbation factor (alpha): {perturb_factor}")
+        self._write_task_log(f"Element conservation limit: {element_limit}")
+        self._write_task_log(f"Output file: {output_npy}")
+        
         logger.info(f"Augmentation complete. Saved {augmented_data.shape} samples to {output_npy}")
 
     def label_data(self, input_npy: str, mech_path: str, output_npy: str, time_step: float):
@@ -440,6 +594,16 @@ class DFODEAgentInterface:
                 source_path=input_npy
             )
             np.save(output_npy, labeled_data)
+            
+            # Log labeling statistics
+            self._write_task_log("=" * 60)
+            self._write_task_log("DATA LABELING COMPLETE")
+            self._write_task_log("=" * 60)
+            self._write_task_log(f"Input samples: {labeled_data.shape[0]}")
+            self._write_task_log(f"Features per sample: {labeled_data.shape[1]}")
+            self._write_task_log(f"Integration time step: {time_step}")
+            self._write_task_log(f"Output file: {output_npy}")
+            
             logger.info(f"Labeling complete. Saved to {output_npy}")
         except Exception as e:
             logger.error(f"Failed to label data: {e}")
@@ -458,6 +622,11 @@ class DFODEAgentInterface:
         """
         logger.info(f"Splitting dataset {input_npy} with train ratio {train_ratio}...")
         input_path = Path(input_npy)
+        
+        # Log data splitting
+        self._write_task_log("=" * 60)
+        self._write_task_log("DATA SPLITTING")
+        self._write_task_log("=" * 60)
         
         try:
             data = np.load(input_path)
@@ -497,7 +666,21 @@ class DFODEAgentInterface:
             mech_path: Path to the mechanism file.
             output_path: Path where the trained model will be saved.
         """
+        # Specific 'train.log' just for this phase
+        log_path = None
+        if self.task_dir:
+            log_path = self.task_dir / "train.log"
+            # Clear existing train log to write fresh header
+            if log_path.exists():
+                os.remove(log_path)
+        
         logger.info(f"Starting training using data from {input_npy}...")
+        logger.info(f"Training log will be saved to: {log_path}")
+        
+        # Get data size for logging (Console only now)
+        data = np.load(input_npy)
+        logger.info(f"Training samples: {data.shape[0]}")
+        logger.info(f"Features per sample: {data.shape[1]}")
         
         # Ensure mechanism path is absolute or relative to DFODE_ROOT
         if not Path(mech_path).exists():
@@ -508,7 +691,9 @@ class DFODEAgentInterface:
         try:
             # Note: The underlying train function currently uses internal defaults for 
             # hyperparameters (epochs=1500, batch_size=20000).
-            train(mech_path, input_npy, output_path)
+            log_file_path = str(log_path) if log_path else ""
+            train(mech_path, input_npy, output_path, log_file=log_file_path)
+            
             logger.info(f"Training complete. Model saved to {output_path}")
         except Exception as e:
             logger.error(f"Training failed: {e}")
@@ -555,7 +740,7 @@ class DFODEAgentInterface:
         shutil.copy(inference_src, workspace_path / "inference.py")
         logger.info("Posteriori setup complete. Torch enabled.")
 
-    def run_priori_test(self, model_path: str, test_npy_path: str, mech_path: str) -> None: 
+    def run_priori_test(self, model_path: str, test_npy_path: str, mech_path: str) -> Dict[str, Any]: 
         """
         Runs a priori (offline) test of the model against the ground truth in the test set.
         Calculates MSE/R2 for the reaction source terms.
@@ -564,8 +749,20 @@ class DFODEAgentInterface:
             model_path: Path to the .pt model file.
             test_npy_path: Path to the hold-out test set (.npy) containing [T, P, Y_in, T_out, P_out, Y_out].
             mech_path: Path to the mechanism file.
+            
+        Returns:
+            Dictionary containing metrics (RMSE, status, etc.)
         """
         logger.info(f"Running Priori Test (Offline Verification) using {test_npy_path}...")
+        
+        # Log start of priori test
+        self._write_task_log("=" * 60)
+        self._write_task_log("PRIORI TEST (OFFLINE VALIDATION) STARTED")
+        self._write_task_log("=" * 60)
+        self._write_task_log(f"Test data: {test_npy_path}")
+        self._write_task_log(f"Model: {model_path}")
+        self._write_task_log(f"Mechanism: {mech_path}")
+        self._write_task_log("-" * 60)
         
         try:
             # Load Data
@@ -605,7 +802,7 @@ class DFODEAgentInterface:
             lamda = 0.1
             
             # Pre-processing (Replicating inference logic)
-            inputs = torch.tensor(X_data).double()
+            inputs = torch.tensor(X_data).float()
             
             # CRITICAL FIX 1: Clip inputs to [0, 1] before BCT
             # Only clip species (columns 2 onwards), T and P are physically positive
@@ -617,12 +814,12 @@ class DFODEAgentInterface:
             
             # Normalize
             inputs_norm = (inputs_bct - Xmu) / Xstd
-            inputs_norm = inputs_norm.double()
+            inputs_norm = inputs_norm.float()
             
             # Sanity Check for Inputs
             if torch.isnan(inputs_norm).any():
                 logger.error("NaNs detected in normalized inputs during Priori Test. Aborting.")
-                return
+                raise ValueError("NaNs detected in inputs")
 
             # Inference
             with torch.no_grad():
@@ -650,19 +847,100 @@ class DFODEAgentInterface:
             mse = np.mean((Y_pred_partial - Y_true_partial)**2)
             rmse = np.sqrt(mse)
             
-            logger.info(f"Priori Test Results on {len(data)} samples:")
-            logger.info(f"  RMSE (Species Mass Fractions): {rmse:.6e}")
+            # Log priori test results
+            self._write_task_log("=" * 60)
+            self._write_task_log("PRIORI TEST (OFFLINE VALIDATION) RESULTS")
+            self._write_task_log("=" * 60)
+            self._write_task_log(f"Test samples: {len(data)}")
+            self._write_task_log(f"Species predicted: {n_species - 1} (excluding N2)")
+            self._write_task_log(f"RMSE (Species Mass Fractions): {rmse:.6e}")
             
             # Simple Pass/Fail check (Heuristic)
             if rmse > 1e-3:
-                logger.warning("  Status: HIGH ERROR. Model may need more training or data.")
+                status = "HIGH ERROR - Model may need more training or data"
+                self._write_task_log(f"Status: {status}")
+                logger.warning(f"  Status: {status}")
             else:
-                logger.info("  Status: PASSED (Low Error).")
+                status = "PASSED (Low Error)"
+                self._write_task_log(f"Status: {status}")
+                logger.info(f"  Status: {status}")
+            
+            logger.info(f"Priori Test Result: RMSE = {rmse}")
+            self._write_task_log("=" * 60)
+            
+            return {
+                "rmse": float(rmse),
+                "status": status,
+                "species_count": n_species
+            }
                 
         except Exception as e:
             logger.error(f"Priori test failed: {e}")
-            # Non-blocking, just log error
-            pass
+            raise
+
+    def generate_task_report(self, work_dir: str, config_dict: Dict[str, Any], priori_metrics: Dict[str, Any] = None):
+        """
+        Generates a comprehensive Markdown report with plots.
+        
+        Args:
+            work_dir: The task directory.
+            config_dict: Physics/Task configuration (Fuel, Oxidizer, Phi, etc.).
+            priori_metrics: Optional dict containing RMSE, epochs, etc. from previous steps.
+        """
+        logger.info(f"Generating task report in {work_dir}...")
+        
+        try:
+            reporter = TaskReporter(work_dir)
+            
+            # File paths
+            raw_h5 = Path(work_dir) / "data_raw.h5"
+            train_npy = Path(work_dir) / "data_labeled_train.npy"
+            train_log = Path(work_dir) / "train.log"
+            mech_path = config_dict.get('mechanism', '')
+            
+            # 1. Plot Data Coverage
+            img_coverage = None
+            if raw_h5.exists() and train_npy.exists():
+                fuel_str = config_dict.get('fuel', 'Fuel')
+                img_coverage = reporter.plot_data_coverage(str(raw_h5), str(train_npy), mech_path, fuel_str)
+            else:
+                logger.warning("Data files missing for coverage plot.")
+
+            # 2. Plot Loss Curve
+            img_loss = None
+            if train_log.exists():
+                img_loss = reporter.plot_loss_curve(str(train_log))
+            else:
+                logger.warning("Training log missing for loss plot.")
+                
+            # 3. Compile Info
+            info = {
+                'fuel': config_dict.get('fuel'),
+                'oxidizer': config_dict.get('oxidizer'),
+                'phi': config_dict.get('eq_ratio'),
+                'p': config_dict.get('p0'),
+                't': config_dict.get('T0'),
+                'mechanism': mech_path,
+                'date': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            }
+            
+            if priori_metrics:
+                info.update(priori_metrics)
+                
+            # 4. Generate Report
+            images = {
+                'loss_curve': img_loss,
+                'data_coverage': img_coverage
+            }
+            
+            report_path = reporter.create_markdown_report(info, images)
+            logger.info(f"Report generated successfully: {report_path}")
+            return report_path
+            
+        except Exception as e:
+            logger.error(f"Failed to generate report: {e}")
+            # Don't raise, reporting is optional/secondary to the main task
+            return None
 
     def run_posteriori_test(self, original_work_dir: str, model_path: str, verification_dir: str = None) -> str:
         """
@@ -912,15 +1190,35 @@ class DFODEAgentInterface:
             f"cd {case_dst} && "
             f"blockMesh > log.blockMesh 2>&1 && "
             f"decomposePar > log.decomposePar 2>&1 && "
-            f"mpirun -np 4 dfLowMachFoam -parallel > log.mpirun 2>&1"
+            f"mpirun -np 4 dfLowMachFoam -parallel > log.mpirun 2>&1 &&"
+            f"reconstructPar > log.reconstructPar 2>&1"
         )
         
         full_command = ["conda", "run", "-n", self.conda_env, "--no-capture-output", "/bin/bash", "-c", run_cmds]
         
+        # Log priori test start
+        self._write_task_log("=" * 60)
+        self._write_task_log("POSTERIORI TEST (CFD VALIDATION) STARTED")
+        self._write_task_log("=" * 60)
+        self._write_task_log(f"Verification case: {case_dst}")
+        self._write_task_log(f"Model: {model_path}")
+        self._write_task_log("-" * 60)
+        
         try:
             logger.info(f"Executing: {run_cmds}")
             subprocess.run(full_command, check=True)
+            
+            # Log posteriori test completion
+            self._write_task_log("-" * 60)
+            self._write_task_log("POSTERIORI TEST COMPLETED SUCCESSFULLY")
+            self._write_task_log(f"Log file: {case_dst}/log.mpirun")
+            self._write_task_log("=" * 60)
+            
             logger.info("Posteriori simulation completed successfully.")
         except subprocess.CalledProcessError:
+            self._write_task_log("-" * 60)
+            self._write_task_log("POSTERIORI TEST FAILED")
+            self._write_task_log(f"Check logs in: {case_dst}")
+            self._write_task_log("=" * 60)
             logger.error("Posteriori simulation failed. Check logs in posteriori_test directory.")
             raise

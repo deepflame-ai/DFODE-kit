@@ -11,6 +11,7 @@ dependencies = [
     "h5py",
     "matplotlib",
     "torch",
+    "pandas"
 ]
 
 [project.scripts]
