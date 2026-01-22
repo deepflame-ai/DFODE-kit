@@ -122,16 +122,20 @@ class TaskReporter:
             plt.figure(figsize=(10, 6))
             
             # Plot Total Loss (Log Scale usually better for loss)
-            plt.semilogy(df['Epoch'], df['TotalLoss'], label='Total Loss', linewidth=2)
+            plt.semilogy(df['Epoch'], df['TotalLoss'], label='Train Loss', linewidth=2)
             
-            # Optional: Plot component losses if they exist and aren't negligible
-            if 'Loss1' in df.columns:
-                plt.semilogy(df['Epoch'], df['Loss1'], label='L1: Prediction', linestyle='--', alpha=0.7)
-            if 'Loss2' in df.columns:
-                plt.semilogy(df['Epoch'], df['Loss2'], label='L2: Mass Cons', linestyle='--', alpha=0.7)
-            if 'Loss3' in df.columns:
-                # Loss3 is often scaled, might be large or small
-                plt.semilogy(df['Epoch'], df['Loss3'], label='L3: Enthalpy', linestyle='--', alpha=0.7)
+            # Plot Validation Loss if available
+            if 'ValLoss' in df.columns:
+                # Use a rolling mean for validation loss to smooth it out if it's noisy, or just plot raw
+                plt.semilogy(df['Epoch'], df['ValLoss'], label='Validation Loss', linewidth=2, linestyle='-')
+
+            # Optional: Plot component losses (REMOVED as per user request)
+            # if 'Loss1' in df.columns:
+            #     plt.semilogy(df['Epoch'], df['Loss1'], label='L1: Prediction', linestyle='--', alpha=0.7)
+            # if 'Loss2' in df.columns:
+            #     plt.semilogy(df['Epoch'], df['Loss2'], label='L2: Mass Cons', linestyle='--', alpha=0.7)
+            # if 'Loss3' in df.columns:
+            #     plt.semilogy(df['Epoch'], df['Loss3'], label='L3: Enthalpy', linestyle='--', alpha=0.7)
 
             plt.xlabel("Epoch")
             plt.ylabel("Loss (Log Scale)")
@@ -150,55 +154,96 @@ class TaskReporter:
 
     def create_markdown_report(self, info: Dict[str, Any], images: Dict[str, str]) -> str:
         """
-        Generates report.md in the task directory.
+        Generates report.md in the task directory based on user requirements.
+        
+        Sections:
+        1. Base Configuration (Task Settings)
+        2. Data Processing & Analysis (Sizes, Split, Coverage Plot)
+        3. Model Training & Validation (Loss Plot, Hyperparams, Metrics)
+        4. Key Artifacts (File List)
         """
         report_path = self.work_dir / "report.md"
         
+        # --- Section 1: Base Configuration ---
         md_content = f"""# DFODE-kit Task Report
 
 **Task Path:** `{self.work_dir.name}`
 **Date:** {info.get('date', 'N/A')}
 **Status:** {info.get('status', 'Completed')}
 
-## 1. Task Summary
-- **Fuel:** {info.get('fuel', 'N/A')}
-- **Oxidizer:** {info.get('oxidizer', 'N/A')}
-- **Equivalence Ratio (Phi):** {info.get('phi', 'N/A')}
-- **Pressure:** {info.get('p', 'N/A')}
-- **Temperature:** {info.get('t', 'N/A')}
-- **Mechanism:** `{Path(info.get('mechanism', '')).name}`
-
-## 2. Model Performance
-- **Priori Test RMSE:** {info.get('rmse', 'N/A')}
-- **Training Epochs:** {info.get('epochs', 'N/A')}
-- **Final Loss:** {info.get('final_loss', 'N/A')}
+## 1. Base Configuration
+| Parameter | Value |
+| :--- | :--- |
+| **Fuel** | `{info.get('fuel', 'N/A')}` |
+| **Oxidizer** | `{info.get('oxidizer', 'N/A')}` |
+| **Equivalence Ratio ($\phi$)** | {info.get('phi', 'N/A')} |
+| **Pressure** | {info.get('p', 'N/A')} Pa |
+| **Temperature** | {info.get('t', 'N/A')} K |
+| **Mechanism** | `{Path(info.get('mechanism', '')).name}` |
 
 """
 
-        if 'loss_curve' in images and images['loss_curve']:
-            md_content += f"""## 3. Training Convergence
-*(Loss over Epochs)*
-![Loss Curve](images/{images['loss_curve']})
+        # --- Section 2: Data Processing & Analysis ---
+        md_content += "## 2. Data Processing & Analysis\n\n"
+        
+        # Data Sizes Table
+        md_content += "### 2.1 Dataset Statistics\n"
+        md_content += "| Dataset Stage | Sample Count |\n"
+        md_content += "| :--- | :--- |\n"
+        md_content += f"| **Raw Sampling** | {info.get('size_raw', 'N/A')} |\n"
+        md_content += f"| **Augmented** | {info.get('size_augmented', 'N/A')} |\n\n"
+        
+        # Split Info
+        md_content += "### 2.2 Data Splitting\n"
+        md_content += f"**Strategy:** {info.get('split_strategy', 'N/A')}\n\n"
+        md_content += "| Split | Count |\n"
+        md_content += "| :--- | :--- |\n"
+        md_content += f"| **Training Set** (80%) | {info.get('size_train', 'N/A')} |\n"
+        md_content += f"| **Validation Set** (10%) | {info.get('size_val', 'N/A')} |\n"
+        md_content += f"| **Test Set** (10%) | {info.get('size_test', 'N/A')} |\n\n"
 
-"""
-
+        # Coverage Plot
         if 'data_coverage' in images and images['data_coverage']:
-            md_content += f"""## 4. Dataset Analysis
-*(Augmented Training Data vs Original Samples)*
-![Data Coverage](images/{images['data_coverage']})
-> **Blue:** Augmented Training Set (Bottom Layer)  
-> **Red:** Original OpenFOAM Samples (Top Layer)
+            md_content += f"### 2.3 Data Coverage Visualization\n"
+            md_content += "*(Augmented Training Data vs Original Samples)*\n"
+            md_content += f"![Data Coverage](images/{images['data_coverage']})\n"
+            md_content += "> **Blue:** Augmented Training Set (Bottom Layer)  \n"
+            md_content += "> **Red:** Original OpenFOAM Samples (Top Layer)\n\n"
 
-"""
+        # --- Section 3: Model Training & Validation ---
+        md_content += "## 3. Model Training & Validation\n\n"
+        
+        # Loss Curve
+        if 'loss_curve' in images and images['loss_curve']:
+            md_content += "### 3.1 Training Convergence\n"
+            md_content += "*(Loss over Epochs)*\n"
+            md_content += f"![Loss Curve](images/{images['loss_curve']})\n\n"
+            
+        # Training Metadata
+        md_content += "### 3.2 Training Configuration & Metrics\n"
+        md_content += "| Metric | Value |\n"
+        md_content += "| :--- | :--- |\n"
+        md_content += f"| **Total Epochs** | {info.get('epochs', 'N/A')} |\n"
+        md_content += f"| **Batch Size** | {info.get('batch_size', '20000 (Default)')} |\n"
+        md_content += f"| **Learning Rate** | {info.get('learning_rate', '0.001 (Default)')} |\n"
+        md_content += f"| **Final Training Loss** | {info.get('final_loss', 'N/A')} |\n"
+        md_content += f"| **Priori Test RMSE** | **{info.get('rmse', 'N/A')}** |\n\n"
 
-        md_content += """## 5. Key Artifacts
+        # --- Section 4: Key Artifacts ---
+        md_content += """## 4. Key Artifacts
+*(Generated files in the task directory)*
+
 | File | Description |
-|------|-------------|
-| `model.pt` | Trained Neural ODE Model |
-| `data_raw.h5` | Raw Simulation Data |
-| `data_labeled_train.npy` | Training Dataset |
+| :--- | :--- |
+| `model.pt` | **Trained Neural ODE Model** (Ready for deployment) |
+| `report.md` | This Report |
+| `execution.log` | Task Workflow Log |
 | `train.log` | Training Metrics (CSV) |
-| `execution.log` | Workflow Execution Log |
+| `data_raw.h5` | Raw Sampling Data (HDF5) |
+| `data_labeled_train.npy` | Training Dataset (Numpy) |
+| `data_labeled_val.npy` | Validation Dataset (Numpy) |
+| `data_labeled_test_unseen.npy` | Hold-out Test Dataset (Numpy) |
+| `posteriori_test/` | Verification Case Directory |
 """
 
         with open(report_path, 'w') as f:

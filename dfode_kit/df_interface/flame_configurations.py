@@ -111,6 +111,9 @@ class OneDFreelyPropagatingFlameConfig:
             self.sim_time_step = 1e-6
         
         if self.num_output_steps is None:
+            # WARN: If write interval is custom but steps are default, this might be unintended.
+            if self.sim_write_interval is not None:
+                print(f"WARNING: 'sim_write_interval' is set ({self.sim_write_interval}) but 'num_output_steps' is MISSING. Defaulting to 100. This implies sim_time = {self.sim_write_interval * 101:.2e}s.")
             self.num_output_steps = 100
         
         if self.sim_write_interval is None:

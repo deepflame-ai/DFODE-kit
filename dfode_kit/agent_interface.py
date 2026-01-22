@@ -92,15 +92,10 @@ class DFODEAgentInterface:
         return None
 
     def _write_task_log(self, message: str):
-        """Write a message to the task log file with timestamp."""
-        log_path = self._get_task_log_path()
-        if log_path:
-            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            try:
-                with open(log_path, 'a') as f:
-                    f.write(f"[{timestamp}] {message}\n")
-            except Exception:
-                pass
+        """Write a message to the standard logger (execution.log)."""
+        # Redirect internal task logging to the main logger to consolidate logs
+        # in execution.log and avoid creating a redundant task.log
+        logger.info(message)
 
     def configure_task_logger(self, workspace_path: str):
         """
@@ -609,18 +604,19 @@ class DFODEAgentInterface:
             logger.error(f"Failed to label data: {e}")
             raise
 
-    def split_data(self, input_npy: str, train_ratio: float = 0.8) -> Tuple[str, str]:
+    def split_data(self, input_npy: str, train_ratio: float = 0.8, val_ratio: float = 0.1) -> Tuple[str, str, str]:
         """
-        Splits the labeled dataset into training and test sets.
+        Splits the labeled dataset into training, validation, and test sets.
         
         Args:
             input_npy: Path to the labeled dataset (.npy).
             train_ratio: Ratio of data to use for training (default: 0.8).
+            val_ratio: Ratio of data to use for validation (default: 0.1).
             
         Returns:
-            Tuple of (train_npy_path, test_npy_path).
+            Tuple of (train_npy_path, val_npy_path, test_npy_path).
         """
-        logger.info(f"Splitting dataset {input_npy} with train ratio {train_ratio}...")
+        logger.info(f"Splitting dataset {input_npy} (Train: {train_ratio}, Val: {val_ratio}, Test: {1.0 - train_ratio - val_ratio:.2f})...")
         input_path = Path(input_npy)
         
         # Log data splitting
@@ -634,37 +630,45 @@ class DFODEAgentInterface:
             np.random.seed(42) # Reproducibility
             np.random.shuffle(data)
             
-            split_idx = int(len(data) * train_ratio)
-            train_data = data[:split_idx]
-            test_data = data[split_idx:]
+            total_samples = len(data)
+            train_end = int(total_samples * train_ratio)
+            val_end = int(total_samples * (train_ratio + val_ratio))
+            
+            train_data = data[:train_end]
+            val_data = data[train_end:val_end]
+            test_data = data[val_end:]
             
             base_dir = input_path.parent
             base_name = input_path.stem
             
             train_path = base_dir / f"{base_name}_train.npy"
+            val_path = base_dir / f"{base_name}_val.npy"
             test_path = base_dir / f"{base_name}_test_unseen.npy"
             
             np.save(train_path, train_data)
+            np.save(val_path, val_data)
             np.save(test_path, test_data)
             
             logger.info("Data split complete.")
             logger.info(f"  Training set ({len(train_data)} samples): {train_path}")
+            logger.info(f"  Validation set ({len(val_data)} samples): {val_path}")
             logger.info(f"  Test set     ({len(test_data)} samples): {test_path}")
             
-            return str(train_path), str(test_path)
+            return str(train_path), str(val_path), str(test_path)
             
         except Exception as e:
             logger.error(f"Failed to split data: {e}")
             raise
 
-    def train_model(self, input_npy: str, mech_path: str, output_path: str):
+    def train_model(self, input_npy: str, mech_path: str, output_path: str, val_npy: str = None):
         """
         Trains the Neural ODE model using the labeled data.
 
         Args:
-            input_npy: Path to the labeled numpy file.
+            input_npy: Path to the labeled numpy file (Training Set).
             mech_path: Path to the mechanism file.
             output_path: Path where the trained model will be saved.
+            val_npy: Path to the labeled numpy file (Validation Set).
         """
         # Specific 'train.log' just for this phase
         log_path = None
@@ -675,6 +679,9 @@ class DFODEAgentInterface:
                 os.remove(log_path)
         
         logger.info(f"Starting training using data from {input_npy}...")
+        if val_npy:
+            logger.info(f"Using validation set: {val_npy}")
+            
         logger.info(f"Training log will be saved to: {log_path}")
         
         # Get data size for logging (Console only now)
@@ -692,7 +699,7 @@ class DFODEAgentInterface:
             # Note: The underlying train function currently uses internal defaults for 
             # hyperparameters (epochs=1500, batch_size=20000).
             log_file_path = str(log_path) if log_path else ""
-            train(mech_path, input_npy, output_path, log_file=log_file_path)
+            train(mech_path, input_npy, output_path, log_file=log_file_path, val_source_file=val_npy)
             
             logger.info(f"Training complete. Model saved to {output_path}")
         except Exception as e:
@@ -895,6 +902,10 @@ class DFODEAgentInterface:
             # File paths
             raw_h5 = Path(work_dir) / "data_raw.h5"
             train_npy = Path(work_dir) / "data_labeled_train.npy"
+            val_npy = Path(work_dir) / "data_labeled_val.npy"
+            test_npy = Path(work_dir) / "data_labeled_test_unseen.npy"
+            aug_npy = Path(work_dir) / "data_augmented.npy"
+            labeled_npy = Path(work_dir) / "data_labeled.npy"
             train_log = Path(work_dir) / "train.log"
             mech_path = config_dict.get('mechanism', '')
             
@@ -913,6 +924,62 @@ class DFODEAgentInterface:
             else:
                 logger.warning("Training log missing for loss plot.")
                 
+            # 3. Collect Data Sizes
+            from dfode_kit.data_operations.h5_kit import get_TPY_from_h5
+            data_stats = {}
+            
+            if raw_h5.exists():
+                try:
+                    raw_data = get_TPY_from_h5(str(raw_h5))
+                    data_stats['size_raw'] = raw_data.shape[0]
+                except:
+                    data_stats['size_raw'] = 'Error'
+            
+            if aug_npy.exists():
+                try:
+                    data_stats['size_augmented'] = np.load(str(aug_npy)).shape[0]
+                except:
+                    data_stats['size_augmented'] = 'Error'
+            
+            if labeled_npy.exists():
+                try:
+                    data_stats['size_total_labeled'] = np.load(str(labeled_npy)).shape[0]
+                except:
+                    data_stats['size_total_labeled'] = 'Error'
+            
+            if train_npy.exists():
+                try:
+                    data_stats['size_train'] = np.load(str(train_npy)).shape[0]
+                except:
+                    data_stats['size_train'] = 'Error'
+            
+            if val_npy.exists():
+                try:
+                    data_stats['size_val'] = np.load(str(val_npy)).shape[0]
+                except:
+                    data_stats['size_val'] = 'Error'
+            
+            if test_npy.exists():
+                try:
+                    data_stats['size_test'] = np.load(str(test_npy)).shape[0]
+                except:
+                    data_stats['size_test'] = 'Error'
+            
+            data_stats['split_strategy'] = "80% Train / 10% Val / 10% Test"
+
+            # 3.5. Extract Training Metrics (Epochs, Final Loss)
+            import pandas as pd
+            training_metrics = {}
+            if train_log.exists():
+                try:
+                    df = pd.read_csv(train_log)
+                    if not df.empty and 'Epoch' in df.columns and 'TotalLoss' in df.columns:
+                        last_row = df.iloc[-1]
+                        training_metrics['epochs'] = int(last_row['Epoch'])
+                        training_metrics['final_loss'] = f"{last_row['TotalLoss']:.4e}"
+                except Exception as e:
+                    logger.warning(f"Failed to extract training metrics from log: {e}")
+
             # 3. Compile Info
             info = {
                 'fuel': config_dict.get('fuel'),
@@ -924,8 +991,12 @@ class DFODEAgentInterface:
                 'date': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             }
             
+            # Update with all gathered stats
+            info.update(data_stats)
             if priori_metrics:
                 info.update(priori_metrics)
+            if training_metrics:
+                info.update(training_metrics)
                 
             # 4. Generate Report
             images = {

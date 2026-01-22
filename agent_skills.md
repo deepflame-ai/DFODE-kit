@@ -26,11 +26,14 @@ You are an expert in Combustion CFD and Deep Learning, specifically operating th
 5.  **Strict Pipeline Integrity:** 
     *   **Augmentation is MANDATORY:** You must use `augment_data`.
     *   **Labeling is MANDATORY:** You must use `label_data`.
-    *   **Splitting is MANDATORY:** You must use `split_data` to create a hold-out test set.
+    *   **Splitting is MANDATORY:** You must use `split_data` (returning train, val, test sets).
     *   **Priori Validation is MANDATORY:** You must use `run_priori_test` to verify RMSE on the test set.
     *   **Posteriori is MANDATORY:** You must use `run_posteriori_test` after training.
+    *   **Reporting is MANDATORY:** You must use `generate_task_report` to create the final Markdown report.
 6.  **Robust Execution:** 
     *   Initialize the agent with correct environment paths: `agent = DFODEAgentInterface(deepflame_source="/path/to/bashrc", openfoam_source="/path/to/bashrc")`.
+7.  **Tool Timeout Safety:** 
+    *   When using the **Bash Tool** to execute the python script (e.g., `python run_task.py`), YOU MUST explicitly set the tool's `timeout` parameter to **1200000** (20 minutes). The default 2-minute timeout is insufficient for training.
 
 ---
 
@@ -59,40 +62,45 @@ import os
 import sys
 import logging
 
-# 0. Setup Task Context & Logging
+# 0. Setup Task Context
 # This script MUST be saved as: runs/<Timestamp_Name>/run_task.py
 work_dir = os.path.dirname(os.path.abspath(__file__))
 log_file = os.path.join(work_dir, "execution.log")
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler(log_file),
-        logging.StreamHandler(sys.stdout)
-    ]
-)
-logger = logging.getLogger(__name__)
-
-logger.info(f"Starting task in: {work_dir}")
-
 # 1. Initialize (ADJUST PATHS FOR CURRENT USER)
+# CRITICAL: Initialize Agent FIRST because it resets the Logging configuration.
 agent = DFODEAgentInterface(
     deepflame_source="/home/zhz/deepflame-dev/bashrc", 
     openfoam_source="/opt/openfoam7/etc/bashrc"
 )
+# CRITICAL: Set task directory so Agent knows where to save internal logs
+agent.set_task_dir(work_dir)
 
-# 2. Config
+# 2. Configure Logging (Must be done AFTER Agent Init)
+# Configure Root Logger to write to file and stdout
+root_logger = logging.getLogger()
+file_handler = logging.FileHandler(log_file, mode='a', encoding='utf-8')
+file_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+root_logger.addHandler(file_handler)
+
+logger = logging.getLogger(__name__)
+logger.info(f"Starting task in: {work_dir}")
+
+# 3. Config
 template = "oneD_freely_propagating_flame"
 config = {
     "mechanism": "mechanisms/drm19.yaml",
     "T0": 300, "p0": 101325, "eq_ratio": 1.0,
     "fuel": "CH4:1", "oxidizer": "O2:0.21,N2:0.79",
-    "sim_time_step": 1e-6, "sim_write_interval": 1e-5
+    "sim_time_step": 1e-6, 
+    "sim_write_interval": 1e-5,
+    # MANDATORY: Explicitly define output count and total time to avoid defaults
+    "num_output_steps": 10,  
+    "sim_time": 1e-4 # Calculated as: sim_write_interval * num_output_steps
 }
 
-# 3. Setup & Run Simulation
-logger.info("Step 3: Setup & Run Simulation")
+# 4. Setup & Run Simulation
+logger.info("Step 4: Setup & Run Simulation")
 # CRITICAL: Always create the simulation in a 'simulation_case' subdirectory.
 sim_dir = os.path.join(work_dir, "simulation_case") 
 agent.create_workspace(sim_dir, template_name=template)
@@ -100,8 +108,8 @@ agent.create_workspace(sim_dir, template_name=template)
 agent.setup_simulation(sim_dir, config_dict=config, template_name=template)
 agent.run_simulation(sim_dir, timeout=1200)
 
-# 4. Data Processing
-logger.info("Step 4: Data Processing")
+# 5. Data Processing
+logger.info("Step 5: Data Processing")
 h5_path = f"{work_dir}/data_raw.h5"
 agent.sample_data(sim_dir, config["mechanism"], output_h5=h5_path)
 
@@ -112,29 +120,36 @@ agent.augment_data(h5_path, config["mechanism"], npy_aug, dataset_num=100000)
 npy_lab = f"{work_dir}/data_labeled.npy"
 agent.label_data(npy_aug, config["mechanism"], npy_lab, time_step=1e-7)
 
-# 5. Train
-logger.info("Step 5: Training")
+# 6. Train
+logger.info("Step 6: Training")
 model_path = f"{work_dir}/model.pt"
 
-# 5.1 Split Data (MANDATORY)
-# Split labeled data into Training Set (80%) and Unseen Test Set (20%)
-train_npy, test_npy = agent.split_data(npy_lab, train_ratio=0.8)
+# 6.1 Split Data (MANDATORY - 8:1:1)
+# Split labeled data into Training (80%), Validation (10%), and Test (10%)
+train_npy, val_npy, test_npy = agent.split_data(npy_lab, train_ratio=0.8, val_ratio=0.1)
 
-# 5.2 Train Model
-# CRITICAL: Train ONLY on the training split to prevent data leakage.
-agent.train_model(train_npy, config["mechanism"], model_path)
+# 6.2 Train Model
+# CRITICAL: Train on training set, monitor on validation set.
+# Note: Log path is handled internally via set_task_dir
+agent.train_model(train_npy, config["mechanism"], model_path, val_npy=val_npy)
 
-# 5.3 Priori Validation (Offline Test)
+# 6.3 Priori Validation (Offline Test)
 # Check model accuracy (RMSE) on the unseen test set before running CFD.
-agent.run_priori_test(model_path, test_npy, config["mechanism"])
+metrics = agent.run_priori_test(model_path, test_npy, config["mechanism"])
 
-# 6. Posteriori Validation
-logger.info("Step 6: Posteriori Validation")
+# 7. Posteriori Validation
+logger.info("Step 7: Posteriori Validation")
 # This function automatically:
 # 1. Clones '{work_dir}/simulation_case' to '{work_dir}/posteriori_test'
 # 2. Syncs simTimeStep with inferenceDeltaTime in config
 # 3. Runs blockMesh -> decomposePar -> mpirun (parallel)
 agent.run_posteriori_test(work_dir, model_path)
+
+# 8. Reporting 
+logger.info("Step 8: Reporting")
+# Generates report.md with Loss curves and Data coverage plots
+report_path = agent.generate_task_report(work_dir, config, metrics)
+logger.info(f"Report generated at: {report_path}")
 ```
 
 ## 3. Troubleshooting Guide

@@ -13,6 +13,7 @@ def train(
     output_path: str,
     time_step: float = 1e-6,
     log_file: str = None,
+    val_source_file: str = None,
 ) -> np.ndarray:
     
     """
@@ -31,11 +32,13 @@ def train(
     mech_path : str
         Path to the mechanism file for the chemical model.
     source_file : str
-        Path to the input data file containing labeled data.
+        Path to the input data file containing labeled data (Training Set).
     output_path : str
         Path to save the trained model and normalization parameters.
     time_step : float, optional
         Time step for the simulation, default is 1e-06 second.
+    val_source_file : str, optional
+        Path to the input data file containing labeled data (Validation Set).
 
     Returns
     -------
@@ -58,7 +61,7 @@ def train(
     thermochem_states1 = labeled_data[:, 0:2+n_species]
     thermochem_states2 = labeled_data[:, 2+n_species:]
 
-    print(thermochem_states1.shape, thermochem_states2.shape)
+    print(f"Training Data: {thermochem_states1.shape}, {thermochem_states2.shape}")
     
     # Align with reference: Use np.abs to ensure non-negativity for all inputs
     thermochem_states1 = np.abs(thermochem_states1)
@@ -84,6 +87,33 @@ def train(
     # Prevent division by zero
     labels_std[labels_std == 0] = 1.0
     labels = (labels - labels_mean) / labels_std
+
+    # --- Validation Data Preparation ---
+    val_features = None
+    val_labels = None
+    if val_source_file:
+        try:
+            val_data = np.load(val_source_file)
+            val_states1 = val_data[:, 0:2+n_species]
+            val_states2 = val_data[:, 2+n_species:]
+            
+            print(f"Validation Data: {val_states1.shape}, {val_states2.shape}")
+            
+            val_states1 = np.abs(val_states1)
+            val_states2 = np.abs(val_states2)
+            
+            val_bct = val_states1.copy()
+            val_bct[:, 2:] = BCT(val_bct[:, 2:])
+            val_features_raw = torch.tensor(val_bct, dtype=torch.float32).to(device)
+            val_labels_raw = torch.tensor(BCT(val_states2[:, 2:-1]) - BCT(val_states1[:, 2:-1]), dtype=torch.float32).to(device)
+            
+            # CRITICAL: Normalize using TRAINING statistics
+            val_features = (val_features_raw - features_mean) / features_std
+            val_labels = (val_labels_raw - labels_mean) / labels_std
+            
+        except Exception as e:
+            print(f"Warning: Failed to load validation data: {e}")
+            val_features = None
 
     formation_enthalpies = torch.tensor(formation_enthalpies, dtype=torch.float32).to(device)
 
@@ -114,9 +144,13 @@ def train(
         total_loss3 = 0
         total_batches = 0
 
+        # Shuffle batches
+        permutation = torch.randperm(features.size(0))
+        
         for i in range(0, len(features), batch_size):
-            batch_features = features[i:i + batch_size]
-            batch_labels = labels[i:i + batch_size]
+            indices = permutation[i:i + batch_size]
+            batch_features = features[indices]
+            batch_labels = labels[indices]
 
             optimizer.zero_grad()
 
@@ -162,24 +196,44 @@ def train(
             loss.backward()
             optimizer.step()
         
-        total_loss1 /= (len(features) / batch_size)
-        total_loss2 /= (len(features) / batch_size)
-        total_loss3 /= (len(features) / batch_size)
-        total_loss /= (len(features) / batch_size)
+        num_batches = len(features) / batch_size
+        total_loss1 /= num_batches
+        total_loss2 /= num_batches
+        total_loss3 /= num_batches
+        total_loss /= num_batches
 
-        # CSV format: Epoch, Loss1, Loss2, Loss3, TotalLoss
-        log_message = "{}, {:.6e}, {:.6e}, {:.6e}, {:.6e}".format(
-            epoch+1, total_loss1, total_loss2, total_loss3, total_loss)
-        
-        # Print legacy format for console readability (Agent execution log)
-        # But write CSV format to file
-        print(f"Epoch: {epoch+1}, Loss1: {total_loss1:.4e}, Loss: {total_loss:.4e}")
+        # Validation Loss
+        val_loss_val = 0.0
+        if val_features is not None:
+            demo_model.eval()
+            with torch.no_grad():
+                val_preds = demo_model(val_features)
+                val_loss = loss_fn(val_preds, val_labels)
+                
+                # Full physical consistency loss for validation is expensive,
+                # so we mainly monitor L1 loss of prediction (similar to loss1)
+                # But for consistency, let's just log loss1 equivalent
+                val_loss_val = val_loss.item()
+            demo_model.train()
+
+        # CSV format: Epoch, Loss1, Loss2, Loss3, TotalLoss, ValLoss
+        if val_features is not None:
+            log_message = "{}, {:.6e}, {:.6e}, {:.6e}, {:.6e}, {:.6e}".format(
+                epoch+1, total_loss1, total_loss2, total_loss3, total_loss, val_loss_val)
+            print(f"Epoch: {epoch+1}, Loss: {total_loss:.4e}, Val_Loss: {val_loss_val:.4e}")
+        else:
+            log_message = "{}, {:.6e}, {:.6e}, {:.6e}, {:.6e}".format(
+                epoch+1, total_loss1, total_loss2, total_loss3, total_loss)
+            print(f"Epoch: {epoch+1}, Loss1: {total_loss1:.4e}, Loss: {total_loss:.4e}")
 
         if log_file:
             with open(log_file, 'a') as f:
                 # Write header if file is empty
                 if f.tell() == 0:
-                    f.write("Epoch,Loss1,Loss2,Loss3,TotalLoss\n")
+                    if val_features is not None:
+                        f.write("Epoch,Loss1,Loss2,Loss3,TotalLoss,ValLoss\n")
+                    else:
+                        f.write("Epoch,Loss1,Loss2,Loss3,TotalLoss\n")
                 f.write(log_message + "\n")
 
     torch.save(
