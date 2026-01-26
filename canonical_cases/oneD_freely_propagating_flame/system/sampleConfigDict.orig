@@ -24,7 +24,7 @@ log_                    on;
 torchModel_             "DNN_model.pt"; 
 frozenTemperature_      510;
 inferenceDeltaTime_     1e-6;
-coresPerNode_           16;
+coresPerNode_           4;
 
 // blockMeshDict settings
 domainWidth             placeHolder;

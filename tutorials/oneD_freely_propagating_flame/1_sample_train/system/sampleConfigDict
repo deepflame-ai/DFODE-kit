@@ -15,7 +15,7 @@ FoamFile
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 // constant/CanteraTorchProperties settings
-CanteraMechanismFile_   "/data1/kexiao/projects/dfode_project/DFODE-kit/mechanisms/Burke2012_s9r23.yaml";
+CanteraMechanismFile_   "/mnt/d/df-data/project/DFODE-kit/mechanisms/Burke2012_s9r23.yaml";
 inertSpecie_            "N2";
 
 torch_                  off;
@@ -27,20 +27,20 @@ inferenceDeltaTime_     1e-6;
 coresPerNode_           16;
 
 // blockMeshDict settings
-domainWidth             0.0018471809630057887;
-domainLength            0.018471809630057887;
-ignitionRegion          0.009235904815028943;
+domainWidth             0.002517707004979872;
+domainLength            0.02517707004979872;
+ignitionRegion          0.01258853502489936;
 
 // controlDict & sampling settings
-simTimeStep             0.00011;
-simTime                 0.00011;
+simTimeStep             0.00101;
+simTime                 0.00101;
 simWriteInterval        1e-05;
 
 // setFieldsDict & 0 dir settings
-UInlet                  2.3489328862660463;
+UInlet                  5.3288998463397705;
 pInternal               101325;
 
-TUnburnt              300.0000000000;
+TUnburnt              500.0000000000;
 HUnburnt                0.0000000000;
 H2Unburnt               0.0285116253;
 OUnburnt                0.0000000000;
@@ -51,15 +51,15 @@ HO2Unburnt              0.0000000000;
 H2O2Unburnt             0.0000000000;
 N2Unburnt               0.7452197771;
 
-TBurnt               2387.7370539722;
-HBurnt                  0.0000750876;
-H2Burnt                 0.0012199387;
-OBurnt                  0.0003921300;
-OHBurnt                 0.0056901808;
-H2OBurnt                0.2401935696;
-O2Burnt                 0.0072074233;
-HO2Burnt                0.0000017034;
-H2O2Burnt               0.0000001896;
+TBurnt               2485.4933394301;
+HBurnt                  0.0001391029;
+H2Burnt                 0.0016855870;
+OBurnt                  0.0007610598;
+OHBurnt                 0.0083451339;
+H2OBurnt                0.2340540016;
+O2Burnt                 0.0097923060;
+HO2Burnt                0.0000027623;
+H2O2Burnt               0.0000002693;
 N2Burnt                 0.7452197771;
 
 

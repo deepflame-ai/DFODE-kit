@@ -32,9 +32,13 @@ def update_one_d_sample_config(cfg: OneDFreelyPropagatingFlameConfig, case_path)
         lines = file.readlines()
 
     for i, line in enumerate(lines):
-        for key, value in replacements.items():
+        # Sort keys by length descending to avoid substring collision (e.g. simTime vs simTimeStep)
+        # This ensures 'simTimeStep' is processed before 'simTime'
+        sorted_keys = sorted(replacements.keys(), key=len, reverse=True)
+        
+        for key in sorted_keys:
             if key in line:
-                lines[i] = line.replace("placeHolder", str(value))
+                lines[i] = line.replace("placeHolder", str(replacements[key]))
                 
         # Update unburnt states
         if "unburntStates" in line:
@@ -62,7 +66,7 @@ def create_0_species_files(cfg: OneDFreelyPropagatingFlameConfig, case_path):
     orig_0_file_path = case_path / '0/Ydefault.orig'
     
     for _, species in  enumerate(cfg.species_names):
-        new_0_file_path = f'0/{species}.orig'
+        new_0_file_path = case_path / f'0/{species}.orig'
         shutil.copy(orig_0_file_path, new_0_file_path)
 
         with open(new_0_file_path, 'r') as file:

@@ -19,7 +19,7 @@ def single_step(npstate, chem, time_step=1e-6):
 
     return res_1st
 
-def random_perturb(
+def random_perturb_element(
     array: np.ndarray, 
     mech_path: str,
     dataset: int,
@@ -32,6 +32,7 @@ def random_perturb(
     cq: float = 10,
     inert_idx: int = -1,
     time_step: float = 1e-6,
+    base_H_O_ratio: float = None, # Added parameter
 ) -> np.ndarray:
     
     array = array[array[:, 0] > frozenTem]
@@ -45,7 +46,11 @@ def random_perturb(
     maxN2 = np.max(array[:,-1])
     minN2 = np.min(array[:,-1])
 
-    H_O_ratio_base = 2 * eq_ratio
+    # Improved H/O ratio logic
+    if base_H_O_ratio is not None:
+        H_O_ratio_base = base_H_O_ratio
+    else:
+        H_O_ratio_base = 2 * eq_ratio
 
     num = 0
     new_array = []
@@ -76,8 +81,6 @@ def random_perturb(
                 if heat_limit:
                     label_test_tmp = single_step(test_tmp, mech_path)
                     label_test_tmp = np.array(label_test_tmp)
-                    # print(formation.shape)
-                    # print(label_test_tmp.shape)
                     qdot_new_ = (-(formation*(label_test_tmp[4+n_species:4+2*n_species]-label_test_tmp[2:2+n_species])/time_step).sum())
                     
                 if element_limit:
@@ -96,13 +99,83 @@ def random_perturb(
                 else:
                     condition = (minT * (1 - gamma)) <= test_tmp[0] <= (maxT * (1 + gamma))
                 
-                # print('k', k)
                 if condition or k > 20:
                     break
                 
-
             if k <= 20:
-                # print('j', j)
+                new_array.append(test_tmp)
+
+        num = len(new_array)
+        print(num)
+
+    new_array = np.array(new_array)
+    new_array = new_array[np.random.choice(new_array.shape[0], size=dataset)]
+    unique_array = np.unique(new_array, axis=0)
+    print(unique_array.shape)
+    return unique_array
+
+def random_perturb(
+    array: np.ndarray, 
+    mech_path: str,
+    dataset: int,
+    # Kept for compatibility but ignored
+    heat_limit: bool = False, 
+    element_limit: bool = False,
+    eq_ratio: float = 1,
+    frozenTem: float = 510,
+    alpha: float = 0.1,
+    gamma: float = 0.1,
+    cq: float = 10,
+    inert_idx: int = -1,
+    time_step: float = 1e-6,
+) -> np.ndarray:
+    """
+    Simplified random perturbation without element or heat limits.
+    Default function for robustness.
+    """
+    
+    array = array[array[:, 0] > frozenTem]
+    
+    # Need gas object for n_species but not used for element calc
+    gas = ct.Solution(mech_path)
+    n_species = gas.n_species
+    
+    maxT = np.max(array[:,0])
+    minT = np.min(array[:,0])
+    maxP = np.max(array[:,1])
+    minP = np.min(array[:,1])
+    maxN2 = np.max(array[:,-1])
+    minN2 = np.min(array[:,-1])
+
+    num = 0
+    new_array = []
+    
+    # Loop until dataset is filled
+    while num < dataset:
+        for j in range(array.shape[0]):
+            test_tmp = np.copy(array[j])
+            k = 0
+            while True:
+                k += 1
+
+                test_r = np.copy(array[j])
+
+                # Standard Perturbation Logic
+                test_tmp[0] = test_r[0] + (maxT - minT)*(2*np.random.rand() - 1.0)*alpha
+                test_tmp[1] = test_r[1] + (maxP - minP)*(2*np.random.rand() - 1.0)*alpha*20
+                test_tmp[-1] = test_r[-1] + (maxN2 - minN2)*(2*np.random.rand() - 1)*alpha
+                for i in range(2, array.shape[1] -1):
+                    test_tmp[i] = np.abs(test_r[i])**(1 + (2*np.random.rand() -1)*alpha)
+                # Normalize species
+                test_tmp[2: -1] = test_tmp[2:-1]/np.sum(test_tmp[2:-1])*(1 - test_tmp[-1])
+
+                # Simple range condition only
+                condition = (minT * (1 - gamma)) <= test_tmp[0] <= (maxT * (1 + gamma))
+                
+                if condition or k > 20:
+                    break
+                
+            if k <= 20:
                 new_array.append(test_tmp)
 
         num = len(new_array)
